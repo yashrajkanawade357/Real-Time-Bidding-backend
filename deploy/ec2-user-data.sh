@@ -27,6 +27,17 @@ else
   git clone --depth 1 "$REPO" "$APP_DIR"
 fi
 
+# Every later boot pulls the latest code and rebuilds, so "reboot" = "redeploy"
+# (aws-launch.sh update). The public IP survives a reboot, so the link stays the same.
+mkdir -p /var/lib/cloud/scripts/per-boot
+cat > /var/lib/cloud/scripts/per-boot/bidding-update.sh <<'SH'
+#!/bin/bash
+set -eux
+cd /opt/bidding
+git pull --ff-only
+docker compose -f docker-compose.yml -f deploy/docker-compose.aws.yml up -d --build --remove-orphans
+SH
+chmod +x /var/lib/cloud/scripts/per-boot/bidding-update.sh
+
 cd "$APP_DIR"
-# restart: unless-stopped in the compose file brings everything back after a reboot.
 docker compose -f docker-compose.yml -f deploy/docker-compose.aws.yml up -d --build

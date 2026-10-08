@@ -38,6 +38,7 @@ in two windows.
 
 ```bash
 bash aws-launch.sh status    # state, URL, health check, end of the boot log (no SSH needed)
+bash aws-launch.sh update    # after pushing new code: reboot, pull, rebuild (same URL)
 bash aws-launch.sh destroy   # terminate the instance when you're done
 ```
 
@@ -47,9 +48,10 @@ service control policy. CloudShell opens in the console's region, which is the
 project's region, so the script works there as-is. The console URL shows it,
 e.g. `...console.aws.amazon.com/console/home?region=ap-southeast-2`.
 
-**To ship new code**: user data only runs on an instance's first boot, so run
-`destroy`, then `launch` again. It takes about five minutes, and the data in
-this demo is disposable.
+**To ship new code**: push to `main`, then run `bash aws-launch.sh update`. It
+reboots the instance, which pulls the latest code and rebuilds on the way up
+(a per-boot script the first boot installs). About two minutes of downtime; the
+public IP survives a reboot, so the link stays the same.
 
 `DEMO_RESTOCK` stays on, so whoever opens the link always finds lots open.
 

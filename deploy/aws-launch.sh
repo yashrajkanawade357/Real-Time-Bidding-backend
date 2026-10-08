@@ -5,6 +5,7 @@
 #   bash aws-launch.sh check     read-only: what would be launched, and where
 #   bash aws-launch.sh launch    open ports 80 and 8001, start the instance
 #   bash aws-launch.sh status    instance state, URL, health and end of boot log
+#   bash aws-launch.sh update    reboot it: it pulls the latest code and rebuilds
 #   bash aws-launch.sh destroy   terminate the instance (the firewall is kept)
 #
 # The instance sets itself up from deploy/ec2-user-data.sh on first boot.
@@ -12,7 +13,7 @@ set -euo pipefail
 
 MODE="${1:-check}"
 NAME="bidding-floor"
-REPO_RAW="https://raw.githubusercontent.com/yashrajkanawade357/Real-Time-Bidding-backend/main"
+REPO_RAW="https://raw.githubusercontent.com/yashrajkanawade357/Real-Time-Bidding-backend/${REF:-main}"
 export AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:?set AWS_REGION to the region to use}}"
 export AWS_DEFAULT_REGION="$AWS_REGION"
 
@@ -131,6 +132,14 @@ case "$MODE" in
     aws ec2 get-console-output --instance-id "$ID" --latest --output text 2>/dev/null | tail -15 || true
     ;;
 
+  update)
+    ID=$(instance_id)
+    if [ -z "$ID" ]; then say "No '$NAME' instance in $AWS_REGION. Run 'launch' first."; exit 0; fi
+    aws ec2 reboot-instances --instance-ids $ID
+    say "Rebooting $ID. On the way up it pulls the latest code from GitHub and rebuilds."
+    say "Back in about 2 minutes, same URL. Check with: bash aws-launch.sh status"
+    ;;
+
   destroy)
     ID=$(instance_id)
     if [ -z "$ID" ]; then say "Nothing to terminate."; exit 0; fi
@@ -139,7 +148,7 @@ case "$MODE" in
     ;;
 
   *)
-    say "usage: bash aws-launch.sh check|launch|status|destroy"
+    say "usage: bash aws-launch.sh check|launch|status|update|destroy"
     exit 2
     ;;
 esac

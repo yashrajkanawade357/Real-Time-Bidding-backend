@@ -14,6 +14,7 @@ import asyncio
 import json
 import os
 import random
+import secrets
 import ssl
 import sys
 import time
@@ -22,6 +23,21 @@ from urllib.parse import urlsplit
 import httpx
 
 OK, BAD = "[ ok ]", "[FAIL]"
+
+
+async def make_accounts(base: str, names: list[str]) -> dict[str, tuple[str, httpx.AsyncClient]]:
+    """On servers that require login: one throwaway account per name. Returns
+    name -> (display name, a client carrying that account's session cookie)."""
+    suffix = secrets.token_hex(2)
+    accounts = {}
+    for name in names:
+        client = httpx.AsyncClient(base_url=base, timeout=15)
+        display = f"{name}-{suffix}"
+        r = await client.post("/auth/signup", json={
+            "email": f"{display}@example.test", "password": secrets.token_urlsafe(16), "display_name": display})
+        r.raise_for_status()
+        accounts[name] = (display, client)
+    return accounts
 
 
 async def open_lot(http: httpx.AsyncClient, admin_key: str | None, **lot) -> dict:
@@ -42,7 +58,8 @@ class Bidder:
     request can be written at the same instant. (A pooled HTTP client would
     queue them, which spreads the 'simultaneous' bids out and hides races.)"""
 
-    def __init__(self, base_url: str) -> None:
+    def __init__(self, base_url: str, cookie: str | None = None) -> None:
+        self.cookie = cookie
         parts = urlsplit(base_url)
         self.host = parts.hostname or "127.0.0.1"
         self.tls = parts.scheme == "https"
@@ -54,10 +71,11 @@ class Bidder:
 
     async def post(self, path: str, payload: dict) -> int:
         body = json.dumps(payload).encode()
-        self.writer.write(
-            f"POST {path} HTTP/1.1\r\nHost: {self.host}\r\nContent-Type: application/json\r\n"
-            f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode() + body
-        )
+        head = (f"POST {path} HTTP/1.1\r\nHost: {self.host}\r\nContent-Type: application/json\r\n"
+                f"Content-Length: {len(body)}\r\nConnection: close\r\n")
+        if self.cookie:
+            head += f"Cookie: bf_session={self.cookie}\r\n"
+        self.writer.write((head + "\r\n").encode() + body)
         await self.writer.drain()
         raw = await self.reader.read()
         self.writer.close()
@@ -72,10 +90,22 @@ async def run_round(http: httpx.AsyncClient, *, n: int, unsafe: bool, seed: int,
 
     amounts = list(range(100, 100 + n))
     random.Random(seed).shuffle(amounts)
-    bidders = {amount: f"bidder-{i % 37:02d}" for i, amount in enumerate(amounts)}
     path = f"/auctions/{aid}/bids" + ("/unsafe" if unsafe else "")
 
-    conns = [Bidder(str(http.base_url)) for _ in amounts]
+    # Servers that require login name the bidder from the session: share the
+    # bids among a few throwaway accounts.
+    login = (await http.get("/config")).json().get("require_login", False) and not unsafe
+    if login:
+        accounts = list((await make_accounts(str(http.base_url), [f"racer{i}" for i in range(5)])).values())
+        cookies = {amount: accounts[i % 5][1].cookies.get("bf_session") for i, amount in enumerate(amounts)}
+        bidders = {amount: accounts[i % 5][0] for i, amount in enumerate(amounts)}
+        for _, client in accounts:
+            await client.aclose()
+    else:
+        cookies = {amount: None for amount in amounts}
+        bidders = {amount: f"bidder-{i % 37:02d}" for i, amount in enumerate(amounts)}
+
+    conns = [Bidder(str(http.base_url), cookies[a]) for a in amounts]
     await asyncio.gather(*(c.open() for c in conns))  # all connected, nothing sent yet
     go = asyncio.Event()
 

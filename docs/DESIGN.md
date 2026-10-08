@@ -172,6 +172,36 @@ the same ids, after every reconnect.
   with "busy, retry" (HTTP 503) rather than hanging. The idempotency key makes
   that retry safe.
 
+## Decision 9: Anti-sniping inside the lock
+
+Timed auctions get "sniped": a bid lands in the final second and nobody can
+answer it. Real auction sites extend the deadline instead, and so does this
+one. When a bid is accepted with less than 30 seconds left, the same `UPDATE`
+that records it also moves `ends_at` to 30 seconds after the bid and adds one
+to `extensions`.
+
+Because it happens in the bid's own transaction, under the row lock:
+
+- the new deadline and the bid commit together, or not at all;
+- the event that announces the bid carries the new deadline, so every
+  client's countdown moves at the same moment;
+- the closer can't slip in between the bid and the extension. Its
+  `UPDATE ... WHERE ends_at <= now()` re-checks the row after the lock is
+  released.
+
+`test_concurrent_late_bids_stay_consistent` fires 50 late bids at once and
+checks that every accepted bid extended the deadline and that the usual
+invariants still hold.
+
+## Decision 10: Identity comes from the session, not the request
+
+Earlier versions trusted a `bidder` name sent by the client, so anyone could
+bid as anyone. Now bidders log in, and the server takes the name from the
+session behind an `HttpOnly` cookie, on both REST and WebSocket. A name in
+the request is ignored. Because the cookie is ambient, every request that
+changes something (and every socket handshake) must come from this site's
+origin; see [SECURITY.md](SECURITY.md).
+
 ## What happens when…
 
 | Situation | Outcome | Why state stays correct |

@@ -66,7 +66,8 @@ jobs:
 
       - name: Secrets the server would generate for itself
         run: |
-          printf 'POSTGRES_PASSWORD=%s\nADMIN_KEY=%s\nTRUSTED_PROXY_HOPS=1\n' \
+          # COOKIE_SECURE off only because CI talks plain HTTP to localhost.
+          printf 'POSTGRES_PASSWORD=%s\nADMIN_KEY=%s\nTRUSTED_PROXY_HOPS=1\nCOOKIE_SECURE=false\n' \
             "ci-$(openssl rand -hex 12)" "$BIDDING_ADMIN_KEY" > .env
 
       - name: Start the stack
@@ -94,7 +95,7 @@ jobs:
 
       - run: pip install -r requirements-dev.txt
 
-      - name: Reconnect walkthrough through nginx (lot opened via the admin API)
+      - name: Reconnect walkthrough through nginx (lot via the admin API, bidders log in)
         run: python scripts/reconnect_demo.py --base-url http://localhost
 
       - name: Only port 80 is published
@@ -114,6 +115,9 @@ jobs:
           test ${#judge} -ge 32
           test "$(code localhost/admin/api/overview -H "Authorization: Bearer $judge")" = 200
           test "$(code -X POST localhost/admin/api/judge-key/rotate -H "Authorization: Bearer $judge")" = 403
+          test "$(curl -s localhost/config | jq -r .require_login)" = true
+          test "$(code -X POST localhost/auctions/1/bids -H 'content-type: application/json' -d '{"bidder":"asha","amount":1}')" = 401
+          test "$(code -X POST localhost/auth/signup -H 'content-type: application/json' -H 'Origin: https://evil.example' -d '{"email":"x@example.test","password":"abcdefgh1","display_name":"xyz"}')" = 403
           curl -sI localhost/ | grep -qi "^content-security-policy: default-src 'self'"
           curl -sI localhost/ | grep -qi "^x-frame-options: DENY"
           ! curl -sI localhost/ | grep -qi "^server: uvicorn"

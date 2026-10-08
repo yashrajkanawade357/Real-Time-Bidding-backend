@@ -69,6 +69,8 @@ The unsafe endpoint exists only for this comparison and is off unless
 | **Live updates** to every connected client | A WebSocket per lot. Every committed change goes out through Postgres `LISTEN/NOTIFY`, so it reaches clients connected to *any* server instance | `test_bid_is_pushed_to_every_connected_client`<br>`test_two_instances_share_live_updates` |
 | **Simultaneous bids decided correctly**: highest wins, stale and lower bids rejected, never last-write-wins | Each bid is one transaction that locks the lot's row (`SELECT … FOR UPDATE`) and checks the rules against the committed price | `test_concurrent_bids_highest_always_wins` (300 at once, three shuffles)<br>`test_equal_simultaneous_bids_only_one_wins` |
 | **Persisted state**: a fresh load or reconnect sees the truth | Nothing lives only in memory. A client's first message is always a snapshot read from Postgres | `test_state_survives_a_server_restart` (kills the server, starts a new one) |
+| **Bidding as yourself only** | Bidders log in with email and password. The bidder name comes from the session on the server, never from the request | `test_bids_need_a_login_and_use_the_accounts_name`<br>`test_sockets_bid_as_the_logged_in_account` |
+| **No sniping** | A bid in the last 30 seconds pushes the end back 30 seconds. This happens in the same locked transaction as the bid | `test_a_late_bid_extends_the_auction`<br>`test_concurrent_late_bids_stay_consistent` |
 | **Disconnects can't corrupt anything** | Sockets hold no auction state. Every event carries a version. Every bid carries an idempotency key. A bid in flight finishes even if its socket dies | `test_bid_resent_after_dropped_connection_is_not_doubled`<br>`test_lost_event_feed_is_followed_by_a_fresh_snapshot` |
 
 <p align="center">
@@ -138,6 +140,7 @@ Postgres, SSH and the API containers can't be reached from the internet.
 
 | Area | Controls |
 |---|---|
+| **Accounts** | scrypt-hashed passwords; HttpOnly, SameSite, Secure session cookies, stored hashed; wrong passwords throttled; other websites refused (CSRF and cross-site WebSocket hijacking) |
 | **Admin** | Owner key and a shareable judge key, compared in constant time; locked out after 10 wrong tries; judges are capped, can't touch keys, and every change is logged by role |
 | **Abuse** | Per-address rate limits for bids, sockets and new lots; body and message size caps |
 | **Browser** | A strict Content-Security-Policy, with no inline scripts at all |
@@ -195,7 +198,7 @@ python scripts/reconnect_demo.py       # narrated: drop, stale offline bid, retr
 pytest
 ```
 
-46 tests against a real Postgres (`TEST_DATABASE_URL`). Locking behaviour
+68 tests against a real Postgres (`TEST_DATABASE_URL`). Locking behaviour
 can't be mocked. They cover:
 
 - the bid rules;
@@ -205,7 +208,9 @@ can't be mocked. They cover:
 - closing exactly once while several closers race;
 - end to end over real sockets: live pushes, reconnects, a full server restart, two instances sharing events, and the server's own event feed dropping mid-auction;
 - every security control: headers, size caps, rate limits, client-address parsing, admin key checks and lockout, and private request ids;
-- the admin portal end to end.
+- accounts: hashing, sessions, bidding only as yourself, cross-site requests refused, and throttling;
+- anti-sniping, including 50 late bids at once;
+- the admin portal and the judge key, end to end.
 
 CI also scans dependencies with `pip-audit`, runs both demo scripts against a
 live server, and boots the production stack (nginx in front of two instances)
@@ -221,7 +226,9 @@ to check load balancing, closed ports and the locked-down endpoints.
 | `GET` | `/auctions/{id}/bids` | History, newest first (`?limit=`, `?include_rejected=true`) |
 | `POST` | `/auctions/{id}/bids` | `{bidder, amount, request_id?}` → `201` accepted · `409` rejected (`bid_too_low`, `auction_closed`) · `200` replay of an accepted `request_id` · `503` busy, retry |
 | `GET` | `/health` | Database and event-listener status, and which instance answered |
-| `GET` | `/config` | Whether visitors may open lots here |
+| `GET` | `/config` | Whether visitors may open lots here, whether bidding needs a login, and the anti-sniping window |
+| `POST` | `/auth/signup` · `/auth/login` · `/auth/logout` | Accounts: `{email, password, display_name}` · `{email, password}`. Sets an HttpOnly session cookie |
+| `GET` | `/auth/me` | The signed-in account, if any |
 | `WS` | `/ws/auctions/{id}?bidder=` | Live channel. Leave out `bidder` to watch only |
 | `*` | `/admin/api/…` | Admin: `overview`, `lots`, `lots/{id}/close`, `lots/{id}/remove`, `bids`. Requires `Authorization: Bearer <key>` |
 | `WS` | `/ws/admin` | Every event for every lot. First message: `{"type": "auth", "key": "…"}` |
@@ -271,6 +278,6 @@ behind an Application Load Balancer, with RDS.
 
 ## Known limits
 
-- **Bidders aren't authenticated.** The bidder name is self-declared. In production it would come from a verified token, never from the client. [SECURITY.md](docs/SECURITY.md) lists this and the other accepted risks, with production fixes.
+- **Email addresses aren't verified.** Accounts are real and can't be impersonated, but anyone can sign up with any address. [SECURITY.md](docs/SECURITY.md) lists this and the other accepted risks, with production fixes.
 - **One hot lot is bounded by one row lock.** That is inherent, because one lot's bids must be strictly ordered. On a laptop that is roughly 600 to 750 bids a second on a single lot. Different lots don't block each other.
-- **Not built:** proxy (maximum) bids, reserve prices, anti-sniping extensions.
+- **Not built:** proxy (maximum) bids, reserve prices, password reset by email.

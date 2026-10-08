@@ -74,6 +74,45 @@ Internet ──HTTPS──▶ CloudFront ──HTTP, port 80──▶ EC2 securi
 `test_too_many_sockets_from_one_address_are_refused`,
 `test_client_is_the_nth_address_from_the_right`.
 
+### Bidder accounts
+
+On the public server bidding needs an account (`REQUIRE_LOGIN=true`).
+Watching stays open to everyone.
+
+- **Your identity comes from the server.** The bidder name is taken from the
+  session, on both the REST and the WebSocket path. A `bidder` field in the
+  request, or a `?bidder=` on the socket, is ignored, so nobody can bid as
+  someone else.
+  *Checked by:* `test_bids_need_a_login_and_use_the_accounts_name`,
+  `test_sockets_bid_as_the_logged_in_account`.
+- **Passwords:**
+  - salted **scrypt** (N=2^14, r=8, p=1), stored as `scrypt$N$r$p$salt$hash`
+    so the cost can be raised later;
+  - hashed off the event loop, so a login doesn't stall other users;
+  - 8–128 characters, and not the email address itself.
+  *Checked by:* `test_passwords_are_hashed_with_scrypt_and_salted`,
+  `test_the_database_never_holds_a_usable_password_or_session`.
+- **Sessions:**
+  - a random 256-bit token in a cookie that is `HttpOnly` (page scripts can't
+    read it), `SameSite=Lax` and, behind HTTPS, `Secure`;
+  - it expires after 14 days, and logging out deletes it on the server;
+  - the database stores only the token's **SHA-256**, so a leaked sessions
+    table can't be used to log in.
+- **Other websites can't act with a visitor's login.** Requests that change
+  something (bids, signup, login, logout) and every WebSocket handshake are
+  refused when their `Origin` isn't this site. Together with `SameSite=Lax`,
+  that stops cross-site request forgery and cross-site WebSocket hijacking.
+  *Checked by:* `test_other_websites_are_refused`, and CI.
+- **Guessing passwords is slow.**
+  - Ten wrong passwords lock an address out for a minute.
+  - Signups are limited to 20 an hour per address.
+  - A login for an unknown email still runs scrypt against a dummy hash, so
+    response timing doesn't reveal which emails have accounts.
+  *Checked by:* `test_wrong_passwords_are_throttled`,
+  `test_signups_are_rate_limited`.
+- **Emails stay private.** They're never shown to other bidders; the floor
+  shows display names.
+
 ### The admin portal
 
 - **The key.** It is generated on the server at first boot
@@ -185,7 +224,8 @@ vulnerabilities**.
 
 | Gap | Why it's acceptable here | Production fix |
 |---|---|---|
-| **Bidders aren't authenticated.** Anyone can bid under any name. | It's a demo of concurrency, not identity. | Sign-in (e.g. Amazon Cognito), with the bidder name taken from the verified token, never the client. |
+| **Email addresses aren't verified.** Someone can sign up with an address that isn't theirs (though never take over an existing account). | Judges can sign up and bid in ten seconds, with no email that might land in spam. | Email verification (e.g. Amazon Cognito or SES one-time codes) before the first bid, plus password reset by email. |
+| **Signup reveals whether an email is registered** ("already exists"). | Clear errors matter more for a demo, and login doesn't reveal it. | Always answer "check your inbox" and send the details by email. |
 | **One shared admin key**, no per-person accounts. | There is one auctioneer. | SSO or Cognito with roles, and every admin action attributed to a person. |
 | **The judge key is public**, so anyone who finds the landing page can open, close and remove lots. | That's the point: judges try it without asking. The damage is bounded (12 open lots, 30 changes/min), every action is logged, lots reopen themselves, and the owner can rotate or switch the key off in one click. | Per-judge invitations with expiry, issued from the owner account. |
 | **The admin key can be read from the EC2 console log** (`aws-launch.sh admin-key`). | Only principals in the AWS account can read it. | AWS Secrets Manager or SSM Parameter Store, read through an instance role. |

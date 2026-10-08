@@ -79,9 +79,14 @@ jobs:
 
       - name: nginx spreads requests across both instances
         run: |
-          seen=$(for i in $(seq 1 12); do curl -s localhost/health | jq -r .instance; done | sort -u | tr '\n' ' ')
-          echo "instances seen: $seen"
-          test "$seen" = "instance-1 instance-2 "
+          # The second instance may still be starting; nginx then routes around it briefly.
+          for attempt in $(seq 1 30); do
+            seen=$(for i in $(seq 1 8); do curl -s localhost/health | jq -r '.instance // empty'; done | sort -u | tr '\n' ' ')
+            echo "instances seen: $seen"
+            if [ "$seen" = "instance-1 instance-2 " ]; then exit 0; fi
+            sleep 2
+          done
+          exit 1
 
       - uses: actions/setup-python@v6
         with:

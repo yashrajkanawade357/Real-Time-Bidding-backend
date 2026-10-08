@@ -1,57 +1,78 @@
 # Deploying on AWS
 
-Two routes. Route 1 gets a public demo running in about 10 minutes. Route 2
-is the production-shaped setup with managed Postgres and more than one instance.
+Two routes. Route 1 is what runs the public demo: one script, about 15
+minutes, HTTPS included. Route 2 is the production-shaped setup with managed
+Postgres and an autoscaling service.
 
-## Route 1: one EC2 instance, set up by its own boot script
+## Route 1: one EC2 instance behind CloudFront, set up by its own boot script
 
-Everything (Postgres and two API instances) runs on one machine, and the
-machine sets itself up on first boot from
-[`deploy/ec2-user-data.sh`](../deploy/ec2-user-data.sh). No SSH and no manual
-installs. Good for a demo; for durable data use RDS (Route 2).
+```
+Internet ──HTTPS──▶ CloudFront ──▶ EC2 (port 80, CloudFront addresses only)
+                                   └─ nginx ─▶ API instance 1 / instance 2 ─▶ PostgreSQL
+```
 
-The boot script installs Docker, clones this repository and runs
-`docker compose` with [`deploy/docker-compose.aws.yml`](../deploy/docker-compose.aws.yml).
-That puts instance 1 on port **80** and instance 2 on **8001**, keeps Postgres
-off the network, and turns off the unsafe race-demo endpoint. CI boots exactly
-this stack on every push (the `aws-stack` job).
+Everything runs on one machine, and the machine sets itself up: no SSH, no
+manual installs. Good for a public demo; for durable data use RDS (Route 2).
+
+- **First boot**: [`deploy/ec2-user-data.sh`](../deploy/ec2-user-data.sh)
+  installs Docker, clones this repository, installs a per-boot hook, and runs
+  [`deploy/on-boot.sh`](../deploy/on-boot.sh).
+- **Every boot**: `on-boot.sh` generates the database password and admin key
+  into a root-only `.env` if they don't exist yet, pulls the latest code, and
+  starts the stack with [`deploy/docker-compose.aws.yml`](../deploy/docker-compose.aws.yml):
+  nginx on port 80 in front of two API instances, nothing else published,
+  public lot creation and the unsafe race-demo endpoint off.
+- **CI boots exactly this stack** on every push (the `aws-stack` job) and checks
+  load balancing, closed ports, locked-down endpoints and security headers.
 
 ### From AWS CloudShell: one script
 
 [`deploy/aws-launch.sh`](../deploy/aws-launch.sh) does all of it. Open
-**CloudShell** from the console (it is already signed in, in the console's
+**CloudShell** from the console (it's already signed in, in the console's
 region) and run:
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/yashrajkanawade357/Real-Time-Bidding-backend/main/deploy/aws-launch.sh
-bash aws-launch.sh check     # read-only: region, free-tier size, image, firewall plan
-bash aws-launch.sh launch    # opens ports 80 and 8001, starts the instance, prints the URL
+bash aws-launch.sh check     # read-only: region, free-tier size, image, firewall and HTTPS plan
+bash aws-launch.sh launch    # firewall + instance + CloudFront; prints the https:// URL
 ```
 
-`launch` picks the first **free-tier eligible** size your account allows
-(t3.micro if available), resolves the current Ubuntu 24.04 image from
-Canonical's public parameter, creates a security group with only ports 80 and
-8001 open (Postgres and SSH stay closed), and starts the instance with
-`ec2-user-data.sh` as its user data. Give it about five minutes to install
-Docker and build, then open `http://<public-ip>` and `http://<public-ip>:8001`
-in two windows.
+`launch`:
+
+1. picks the first **free-tier eligible** size your account allows (t3.micro if available);
+2. resolves the current Ubuntu 24.04 image from Canonical's public parameter;
+3. creates a security group whose only rule is **port 80 from CloudFront's
+   origin-facing prefix list** - the server can't be reached around HTTPS,
+   and Postgres and SSH aren't reachable at all;
+4. starts the instance with `ec2-user-data.sh` as its user data (IMDSv2 required);
+5. creates a CloudFront distribution in front of it - or, if one already
+   exists, points it at the new instance, so the `https://` URL never changes -
+   with HTTP redirected to HTTPS and caching off (every request is live data).
+
+CloudFront takes 3-10 minutes to deploy and the instance about 5 minutes to
+build. Then:
 
 ```bash
-bash aws-launch.sh status    # state, URL, health check, end of the boot log (no SSH needed)
-bash aws-launch.sh update    # after pushing new code: reboot, pull, rebuild (same URL)
-bash aws-launch.sh destroy   # terminate the instance when you're done
+bash aws-launch.sh status     # instance, URL, health check, end of the boot log
+bash aws-launch.sh admin-key  # the access key for https://<your-domain>/admin
+bash aws-launch.sh update     # after pushing new code: reboot, pull, rebuild (same URL)
+bash aws-launch.sh destroy    # terminate the instance; CloudFront and the firewall are kept
 ```
 
-**Accounts from AWS's new sign-up ("projects")** can only run EC2 in the
-region chosen for the project; other regions are denied by an AWS-managed
-service control policy. CloudShell opens in the console's region, which is the
+**The admin key** is generated on the instance and never leaves it except
+through the instance's console log, which only principals in your AWS account
+can read; `admin-key` reads it from there. See [SECURITY.md](SECURITY.md) for
+why, and what a production setup would use instead.
+
+**Accounts from AWS's new sign-up ("projects")** can only run EC2 in the region
+chosen for the project; other regions are denied by an AWS-managed service
+control policy. CloudShell opens in the console's region, which is the
 project's region, so the script works there as-is. The console URL shows it,
 e.g. `...console.aws.amazon.com/console/home?region=ap-southeast-2`.
 
-**To ship new code**: push to `main`, then run `bash aws-launch.sh update`. It
-reboots the instance, which pulls the latest code and rebuilds on the way up
-(a per-boot script the first boot installs). About two minutes of downtime; the
-public IP survives a reboot, so the link stays the same.
+**To ship new code**: push to `main`, then `bash aws-launch.sh update`. The
+instance reboots, pulls and rebuilds on the way up - about three minutes of
+downtime, same URL.
 
 `DEMO_RESTOCK` stays on, so whoever opens the link always finds lots open.
 

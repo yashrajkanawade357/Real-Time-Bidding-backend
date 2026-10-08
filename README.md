@@ -59,7 +59,7 @@ The unsafe endpoint exists only for this comparison and is off unless
 ## How it stays correct
 
 <p align="center">
-  <img src="docs/img/row-lock.svg" width="880" alt="Timeline of three simultaneous bids queueing on the auction row lock. 1,050 is accepted, then 1,200 is accepted, then 1,100 is rejected because the minimum has become 1,250. Below, the same bids without a lock all read 1,000 and the last write, 1,100, wins.">
+  <img src="static/img/row-lock.svg" width="880" alt="Timeline of three simultaneous bids queueing on the auction row lock. 1,050 is accepted, then 1,200 is accepted, then 1,100 is rejected because the minimum has become 1,250. Below, the same bids without a lock all read 1,000 and the last write, 1,100, wins.">
 </p>
 
 | Requirement | How | Proven by |
@@ -70,7 +70,7 @@ The unsafe endpoint exists only for this comparison and is off unless
 | **Disconnects can't corrupt anything** | Sockets hold no auction state. Every event carries a version. Every bid carries an idempotency key. A bid in flight finishes even if its socket dies | `test_bid_resent_after_dropped_connection_is_not_doubled`<br>`test_lost_event_feed_is_followed_by_a_fresh_snapshot` |
 
 <p align="center">
-  <img src="docs/img/architecture.svg" width="880" alt="Clients connect over WebSockets and HTTP to any number of API instances. Each bid is one Postgres transaction. Postgres notifies every instance after commit, and each pushes the change to its own clients.">
+  <img src="static/img/architecture.svg" width="880" alt="Clients connect over WebSockets and HTTP to any number of API instances. Each bid is one Postgres transaction. Postgres notifies every instance after commit, and each pushes the change to its own clients.">
 </p>
 
 The full reasoning is in **[docs/DESIGN.md](docs/DESIGN.md)**: why a row lock

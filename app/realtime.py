@@ -28,10 +28,10 @@ from typing import Any
 import asyncpg
 from fastapi import APIRouter, WebSocket
 
-from app import auctions, bidding
+from app import admin, auctions, bidding
 from app.config import MAX_AMOUNT
 from app.hub import Client
-from app.security import RateLimiter, client_ip, key_matches
+from app.security import RateLimiter, client_ip
 
 router = APIRouter()
 
@@ -149,7 +149,7 @@ async def admin_socket(ws: WebSocket) -> None:
     settings = state.settings
     ip = _ip_of(ws)
     await ws.accept()
-    if settings.admin_key is None:
+    if not admin.admin_enabled(settings):
         await ws.close(code=NOT_FOUND, reason="admin is disabled")
         return
     if not state.admin_failures.peek(ip):
@@ -162,7 +162,8 @@ async def admin_socket(ws: WebSocket) -> None:
         supplied = None
     except Exception:  # client went away
         return
-    if not key_matches(supplied, settings.admin_key):
+    role = await admin.role_for(state, supplied)
+    if role is None:
         state.admin_failures.allow(ip)
         await ws.close(code=UNAUTHORIZED, reason="bad key")
         return
@@ -170,7 +171,7 @@ async def admin_socket(ws: WebSocket) -> None:
     client = Client(ws, 0, None, state.hub.queue_max, ip=ip)
     state.hub.join_admin(client)
     try:
-        client.offer(json.dumps({"type": "hello", "instance": settings.instance_name}))
+        client.offer(json.dumps({"type": "hello", "instance": settings.instance_name, "role": role}))
         await client.serve(_admin_message)
     finally:
         state.hub.leave(client)

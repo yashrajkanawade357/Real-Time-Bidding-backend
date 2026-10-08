@@ -131,7 +131,7 @@ async def test_public_lot_creation_can_be_switched_off(pool, settings):
         r = await http.post("/auctions", json={"title": "Nope", "starting_price": 10})
         config = (await http.get("/config")).json()
     assert r.status_code == 403
-    assert config == {"public_lot_creation": False, "instance": settings.instance_name}
+    assert config == {"public_lot_creation": False, "instance": settings.instance_name, "judge_key": None}
 
 
 async def test_snapshot_says_which_instance_the_socket_is_on(pool, settings):

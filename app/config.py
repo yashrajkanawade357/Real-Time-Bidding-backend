@@ -60,6 +60,10 @@ class Settings:
     ws_connections_per_ip: int = 50
     max_body_bytes: int = 16 * 1024
     instance_name: str = "local"
+    # A shareable judge key (full admin control, shown on the landing page).
+    judge_access: bool = False
+    judge_open_lot_cap: int = 12
+    judge_writes_per_min: int = 30
 
 
 def load_settings() -> Settings:
@@ -88,6 +92,9 @@ def load_settings() -> Settings:
         ws_connections_per_ip=_int("WS_CONNECTIONS_PER_IP", 50),
         max_body_bytes=_int("MAX_BODY_BYTES", 16 * 1024),
         instance_name=os.environ.get("INSTANCE_NAME") or socket.gethostname(),
+        judge_access=_bool("JUDGE_ACCESS", False),
+        judge_open_lot_cap=_int("JUDGE_OPEN_LOT_CAP", 12),
+        judge_writes_per_min=_int("JUDGE_WRITES_PER_MIN", 30),
     )
 
 

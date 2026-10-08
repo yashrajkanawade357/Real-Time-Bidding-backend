@@ -93,6 +93,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         pool = await db.create_pool(settings)
         await db.migrate(pool)
+        if settings.judge_access:
+            await admin.ensure_judge_key(pool)
         hub = Hub(settings.client_queue_max)
         app.state.pool, app.state.hub = pool, hub
         app.state.listener = EventListener(
@@ -108,8 +110,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         ]
         if settings.demo_restock:
             background.append(asyncio.create_task(demo.restock_loop(pool, settings.demo_open_lots)))
-        if settings.admin_key is None:
-            log.info("admin portal is off (no ADMIN_KEY)")
+        if not admin.admin_enabled(settings):
+            log.info("admin portal is off (no ADMIN_KEY, no JUDGE_ACCESS)")
         try:
             yield
         finally:
@@ -136,6 +138,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                                enabled=settings.rate_limits)
     # Always on: 10 wrong admin keys, then one more try every 6 seconds.
     app.state.admin_failures = RateLimiter(10 / 60, 10)
+    # The shareable judge key gets a budget of changes per minute per address.
+    app.state.judge_writes = RateLimiter(settings.judge_writes_per_min / 60, settings.judge_writes_per_min)
 
     app.add_middleware(SecurityMiddleware, instance=settings.instance_name,
                        max_body_bytes=settings.max_body_bytes)
@@ -182,9 +186,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
 
     @app.get("/config")
-    async def client_config() -> dict:
-        """What the browser client needs to know about this deployment."""
-        return {"public_lot_creation": settings.public_lot_creation, "instance": settings.instance_name}
+    async def client_config(request: Request) -> dict:
+        """What the browser pages need to know about this deployment. With
+        JUDGE_ACCESS on, that includes the judge key: it's meant to be public."""
+        judge_key = await admin.current_judge_key(request.app.state.pool) if settings.judge_access else None
+        return {
+            "public_lot_creation": settings.public_lot_creation,
+            "instance": settings.instance_name,
+            "judge_key": judge_key,
+        }
 
     @app.post("/auctions", status_code=201)
     async def create_auction(body: AuctionCreate, request: Request) -> dict:

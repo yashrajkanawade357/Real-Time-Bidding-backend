@@ -39,6 +39,7 @@ def settings():
         enable_unsafe_demo=False,
         demo_restock=False,
         admin_key=None,
+        judge_access=False,
         public_lot_creation=True,
         trusted_proxy_hops=0,
         rate_limits=True,
@@ -54,7 +55,9 @@ async def pool(settings) -> AsyncIterator[asyncpg.Pool]:
     except (OSError, asyncpg.PostgresError) as exc:
         pytest.skip(f"test database unavailable ({exc}); set TEST_DATABASE_URL")
     await db.migrate(pool)
-    await pool.execute("TRUNCATE bids, auctions RESTART IDENTITY CASCADE")
+    await pool.execute(
+        "TRUNCATE bids, auctions, admin_actions, access_keys, instances RESTART IDENTITY CASCADE"
+    )
     yield pool
     await pool.close()
 

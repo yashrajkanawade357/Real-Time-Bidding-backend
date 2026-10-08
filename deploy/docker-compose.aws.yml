@@ -11,6 +11,9 @@ x-public: &public
   PUBLIC_LOT_CREATION: "${PUBLIC_LOT_CREATION:-false}"
   # CloudFront and nginx each append to X-Forwarded-For.
   TRUSTED_PROXY_HOPS: "${TRUSTED_PROXY_HOPS:-2}"
+  # A shareable judge key with full control over lots, shown on the landing page.
+  # The owner can rotate or switch it off from /admin.
+  JUDGE_ACCESS: "${JUDGE_ACCESS:-true}"
 
 services:
   db:

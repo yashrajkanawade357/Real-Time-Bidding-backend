@@ -110,6 +110,10 @@ jobs:
           test "$(code -X POST localhost/auctions -H 'content-type: application/json' -d '{"title":"x","starting_price":1}')" = 403
           test "$(code localhost/admin/api/overview -H 'Authorization: Bearer wrong-key-0123456789abcdefgh')" = 401
           test "$(code localhost/admin/api/overview -H "Authorization: Bearer $BIDDING_ADMIN_KEY")" = 200
+          judge=$(curl -s localhost/config | jq -r .judge_key)
+          test ${#judge} -ge 32
+          test "$(code localhost/admin/api/overview -H "Authorization: Bearer $judge")" = 200
+          test "$(code -X POST localhost/admin/api/judge-key/rotate -H "Authorization: Bearer $judge")" = 403
           curl -sI localhost/ | grep -qi "^content-security-policy: default-src 'self'"
           curl -sI localhost/ | grep -qi "^x-frame-options: DENY"
           ! curl -sI localhost/ | grep -qi "^server: uvicorn"

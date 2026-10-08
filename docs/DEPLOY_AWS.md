@@ -35,7 +35,9 @@ demo; for durable data use RDS (Route 2).
 4. Open `http://<public-ip>:8000` and `http://<public-ip>:8001` in two tabs.
 
 Before sharing the URL publicly, set `ENABLE_UNSAFE_DEMO: "false"` in
-`docker-compose.yml` unless you want the race demo reachable.
+`docker-compose.yml` unless you want the race demo reachable. Leave
+`DEMO_RESTOCK: "true"`: it keeps a few lots open, so whoever opens the link
+always finds something live to bid on.
 
 ## Route 2: ECS Fargate + Application Load Balancer + RDS PostgreSQL
 
@@ -69,7 +71,8 @@ docker push <account>.dkr.ecr.<region>.amazonaws.com/realtime-bidding:latest
 
 - Task definition: the image above, container port `8000`, 0.25 vCPU / 0.5 GB.
 - Environment: `DATABASE_URL` from the Secrets Manager secret,
-  `ENABLE_UNSAFE_DEMO=false`, and `DB_POOL_MAX` sized so that
+  `ENABLE_UNSAFE_DEMO=false`, `DEMO_RESTOCK=true` for a public demo, and
+  `DB_POOL_MAX` sized so that
   `tasks × DB_POOL_MAX + tasks` (one listener connection each) stays under
   RDS's `max_connections`.
 - Service: **desired count 2**, in private subnets, attached to the target

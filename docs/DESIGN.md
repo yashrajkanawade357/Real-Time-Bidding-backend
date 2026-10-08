@@ -18,9 +18,9 @@ if amount > auction.current_price:      # all three pass
 ```
 
 Whichever `UPDATE` happens to land last wins, even if it is the 1,050. That is
-the bug `scripts/race_demo.py --unsafe` reproduces: with 300 simultaneous bids,
-223 bidders were told "accepted", the final price was 369 even though 399 was
-bid, and a lower bid overwrote a higher one 106 times.
+the bug `scripts/race_demo.py --unsafe` reproduces. In one run of 300
+simultaneous bids, 243 bidders were told "accepted", the lot went for 292
+even though 399 was bid, and a lower bid overwrote a higher one 123 times.
 
 ## Decision 1: Lock the auction row for the whole bid
 
@@ -207,11 +207,14 @@ WebSockets natively and needs no stickiness. See [DEPLOY_AWS.md](DEPLOY_AWS.md).
 
 ## Measured
 
-- 300 simultaneous bids on one auction: **0.50 s** end to end over HTTP,
-  correct winner, accepted bids strictly increasing.
-- The same 300 bids through the unsafe path: **wrong winner**, final price
-  369 instead of 399, and **106** cases of a lower bid replacing a higher one.
-- 25 automated tests against a real Postgres, all passing.
+- 300 simultaneous bids on one lot: **0.4 to 0.5 s** end to end over HTTP
+  (about 600 to 750 bids/s), correct winner, accepted bids strictly
+  increasing. Every check passed in every run.
+- The same 300 bids through the unsafe path, over six runs: lower bids
+  replaced higher ones **102 to 134 times** per run, and the **wrong bidder
+  won in five of the six**.
+- 27 automated tests against a real Postgres, all passing. CI also runs both
+  demo scripts against a live server.
 
 ## FAQ
 
@@ -222,7 +225,7 @@ lock serialises.
 
 **Doesn't one lock per auction limit throughput?**
 For one auction, yes, and that is inherent: an auction's bids must be totally
-ordered. About 600 bids/s on one lot on a laptop. Different auctions proceed
+ordered. About 600 to 750 bids/s on one lot on a laptop. Different auctions proceed
 in parallel. Very hot single items would be sharded by time or handled with
 an in-memory sequencer that persists to a log, but that is far beyond this scope.
 

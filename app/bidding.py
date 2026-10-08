@@ -71,7 +71,8 @@ class BidOutcome:
 def _rejection_reason(auction: asyncpg.Record, amount: int) -> str | None:
     # db_now is the transaction's start time, i.e. when the bid arrived - a bid
     # that arrived before the deadline but queued for the lock still counts.
-    if auction["status"] != "open" or auction["db_now"] >= auction["ends_at"]:
+    if (auction["status"] != "open" or auction["removed_at"] is not None
+            or auction["db_now"] >= auction["ends_at"]):
         return CLOSED
     if amount < min_next_bid(auction):
         return TOO_LOW
@@ -107,7 +108,7 @@ async def place_bid(
                     accepted=previous["status"] == "accepted",
                     duplicate=True,
                     reason=previous["reason"],
-                    bid=bid_dict(previous),
+                    bid=bid_dict(previous, private=True),
                     auction=auction_dict(auction),
                 )
 
@@ -127,7 +128,7 @@ async def place_bid(
             )
             if reason is not None:
                 # Recorded for the audit trail; the auction itself is untouched.
-                return BidOutcome(False, False, reason, bid_dict(bid), auction_dict(auction))
+                return BidOutcome(False, False, reason, bid_dict(bid, private=True), auction_dict(auction))
 
             updated = await conn.fetchrow(
                 f"""
@@ -141,9 +142,10 @@ async def place_bid(
                 amount,
                 bidder,
             )
-            bid_out, auction_out = bid_dict(bid), auction_dict(updated)
-            await _notify(conn, {"type": "bid_accepted", "auction": auction_out, "bid": bid_out})
-            return BidOutcome(True, False, None, bid_out, auction_out)
+            auction_out = auction_dict(updated)
+            # Everyone hears about the bid; only the bidder gets its request_id back.
+            await _notify(conn, {"type": "bid_accepted", "auction": auction_out, "bid": bid_dict(bid)})
+            return BidOutcome(True, False, None, bid_dict(bid, private=True), auction_out)
     except asyncpg.exceptions.LockNotAvailableError as exc:
         raise AuctionBusy(auction_id) from exc
 
@@ -195,7 +197,7 @@ async def place_bid_unsafe(
     bid_out, auction_out = bid_dict(bid), auction_dict(updated)
     async with pool.acquire() as conn:
         await _notify(conn, {"type": "bid_accepted", "auction": auction_out, "bid": bid_out})
-    return BidOutcome(True, False, None, bid_out, auction_out)
+    return BidOutcome(True, False, None, bid_dict(bid, private=True), auction_out)
 
 
 async def close_expired(pool: asyncpg.Pool) -> list[dict[str, Any]]:
@@ -221,6 +223,52 @@ async def close_expired(pool: asyncpg.Pool) -> list[dict[str, Any]]:
             return closed
     except asyncpg.exceptions.LockNotAvailableError:
         return []  # a bid holds the row; the next tick will get it
+
+
+async def close_now(pool: asyncpg.Pool, auction_id: int) -> dict[str, Any] | None:
+    """Admin: end an open lot immediately. The current leader wins.
+
+    The UPDATE takes the row lock like a bid does, so a bid in flight either
+    commits before the close or is rejected after it - never half of each.
+    Returns None if the lot doesn't exist or isn't open.
+    """
+    async with pool.acquire() as conn, conn.transaction():
+        row = await conn.fetchrow(
+            f"""
+            UPDATE auctions
+            SET status = 'closed', closed_at = now(), ends_at = LEAST(ends_at, now()),
+                version = version + 1
+            WHERE id = $1 AND status = 'open' AND removed_at IS NULL
+            RETURNING {AUCTION_COLUMNS}
+            """,
+            auction_id,
+        )
+        if row is None:
+            return None
+        auction = auction_dict(row)
+        await _notify(conn, {"type": "auction_closed", "auction": auction})
+        return auction
+
+
+async def remove(pool: asyncpg.Pool, auction_id: int) -> dict[str, Any] | None:
+    """Admin: withdraw a lot. It closes (if open), disappears from public view,
+    and every connected viewer is told. Its bids stay for the audit trail."""
+    async with pool.acquire() as conn, conn.transaction():
+        row = await conn.fetchrow(
+            f"""
+            UPDATE auctions
+            SET removed_at = now(), status = 'closed',
+                closed_at = COALESCE(closed_at, now()), version = version + 1
+            WHERE id = $1 AND removed_at IS NULL
+            RETURNING {AUCTION_COLUMNS}
+            """,
+            auction_id,
+        )
+        if row is None:
+            return None
+        auction = auction_dict(row)
+        await _notify(conn, {"type": "auction_removed", "auction": auction})
+        return auction
 
 
 async def closer_loop(pool: asyncpg.Pool, interval: float) -> None:

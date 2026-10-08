@@ -10,7 +10,7 @@ import asyncpg
 
 AUCTION_COLUMNS = """
     id, title, description, starting_price, min_increment, current_price,
-    leader, bid_count, version, status, ends_at, created_at, closed_at
+    leader, bid_count, version, status, ends_at, created_at, closed_at, removed_at
 """
 
 BID_COLUMNS = "id, auction_id, bidder, amount, request_id, status, reason, created_at"
@@ -42,21 +42,26 @@ def auction_dict(row: asyncpg.Record) -> dict[str, Any]:
         "ends_at": _iso(row["ends_at"]),
         "created_at": _iso(row["created_at"]),
         "closed_at": _iso(row["closed_at"]),
+        "removed_at": _iso(row["removed_at"]),
         "version": row["version"],
     }
 
 
-def bid_dict(row: asyncpg.Record) -> dict[str, Any]:
-    return {
+def bid_dict(row: asyncpg.Record, *, private: bool = False) -> dict[str, Any]:
+    """A bid as JSON. `request_id` is the bidder's retry key, so it only goes
+    back to the bidder who sent it (and to the admin), never to everyone."""
+    bid = {
         "id": row["id"],
         "auction_id": row["auction_id"],
         "bidder": row["bidder"],
         "amount": row["amount"],
-        "request_id": row["request_id"],
         "status": row["status"],
         "reason": row["reason"],
         "created_at": _iso(row["created_at"]),
     }
+    if private:
+        bid["request_id"] = row["request_id"]
+    return bid
 
 
 async def create(
@@ -83,16 +88,20 @@ async def create(
     return auction_dict(row)
 
 
-async def list_all(pool: asyncpg.Pool, limit: int = 100) -> list[dict[str, Any]]:
+async def list_all(
+    pool: asyncpg.Pool, limit: int = 100, *, include_removed: bool = False
+) -> list[dict[str, Any]]:
     rows = await pool.fetch(
         f"""
         SELECT {AUCTION_COLUMNS} FROM auctions
+        WHERE $2 OR removed_at IS NULL
         ORDER BY status = 'open' DESC,
                  CASE WHEN status = 'open' THEN ends_at END ASC,
                  ends_at DESC
         LIMIT $1
         """,
         limit,
+        include_removed,
     )
     return [auction_dict(r) for r in rows]
 
@@ -107,7 +116,9 @@ async def snapshot(
     """
     async with pool.acquire() as conn, conn.transaction(isolation="repeatable_read", readonly=True):
         row = await conn.fetchrow(
-            f"SELECT {AUCTION_COLUMNS}, now() AS db_now FROM auctions WHERE id = $1", auction_id
+            f"SELECT {AUCTION_COLUMNS}, now() AS db_now FROM auctions"
+            " WHERE id = $1 AND removed_at IS NULL",
+            auction_id,
         )
         if row is None:
             return None
@@ -127,17 +138,24 @@ async def snapshot(
     }
 
 
-async def snapshot_message(pool: asyncpg.Pool, auction_id: int) -> str | None:
+async def snapshot_message(
+    pool: asyncpg.Pool, auction_id: int, *, instance: str | None = None
+) -> str | None:
     snap = await snapshot(pool, auction_id)
     if snap is None:
         return None
-    return json.dumps({"type": "snapshot", **snap})
+    message = {"type": "snapshot", **snap}
+    if instance:
+        message["instance"] = instance  # which API instance this socket is on
+    return json.dumps(message)
 
 
 async def bid_history(
     pool: asyncpg.Pool, auction_id: int, *, limit: int, include_rejected: bool
 ) -> list[dict[str, Any]] | None:
-    if await pool.fetchval("SELECT 1 FROM auctions WHERE id = $1", auction_id) is None:
+    if await pool.fetchval(
+        "SELECT 1 FROM auctions WHERE id = $1 AND removed_at IS NULL", auction_id
+    ) is None:
         return None
     rows = await pool.fetch(
         f"""

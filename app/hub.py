@@ -26,10 +26,13 @@ class Client:
     client can't stall broadcasts to everyone else - if its queue fills up it
     is disconnected, and on reconnect it gets a fresh snapshot."""
 
-    def __init__(self, ws: WebSocket, auction_id: int, bidder: str | None, queue_max: int) -> None:
+    def __init__(
+        self, ws: WebSocket, auction_id: int, bidder: str | None, queue_max: int, ip: str = ""
+    ) -> None:
         self.ws = ws
         self.auction_id = auction_id
         self.bidder = bidder
+        self.ip = ip
         self._queue: asyncio.Queue[str] = asyncio.Queue(maxsize=queue_max)
         self._closing = asyncio.Event()
         self._close_args: tuple[int, str] | None = None
@@ -84,20 +87,42 @@ class Hub:
     def __init__(self, queue_max: int) -> None:
         self.queue_max = queue_max
         self._rooms: dict[int, set[Client]] = defaultdict(set)
+        self._admins: set[Client] = set()  # receive every event, for every lot
+        self._per_ip: dict[str, int] = defaultdict(int)
 
     def join(self, client: Client) -> None:
         self._rooms[client.auction_id].add(client)
+        self._per_ip[client.ip] += 1
+
+    def join_admin(self, client: Client) -> None:
+        self._admins.add(client)
+        self._per_ip[client.ip] += 1
 
     def leave(self, client: Client) -> None:
-        room = self._rooms.get(client.auction_id)
-        if room is None:
-            return
-        room.discard(client)
-        if not room:
-            del self._rooms[client.auction_id]
+        if client in self._admins:
+            self._admins.discard(client)
+        else:
+            room = self._rooms.get(client.auction_id)
+            if room is None or client not in room:
+                return
+            room.discard(client)
+            if not room:
+                del self._rooms[client.auction_id]
+        self._per_ip[client.ip] -= 1
+        if self._per_ip[client.ip] <= 0:
+            del self._per_ip[client.ip]
+
+    def connections_from(self, ip: str) -> int:
+        return self._per_ip.get(ip, 0)
 
     def publish(self, auction_id: int, text: str) -> None:
         for client in list(self._rooms.get(auction_id, ())):
+            client.offer(text)
+        for client in list(self._admins):
+            client.offer(text)
+
+    def publish_admins(self, text: str) -> None:
+        for client in list(self._admins):
             client.offer(text)
 
     def auction_ids(self) -> list[int]:
@@ -106,7 +131,12 @@ class Hub:
     def client_count(self) -> int:
         return sum(len(room) for room in self._rooms.values())
 
+    def admin_count(self) -> int:
+        return len(self._admins)
+
     def close_all(self, code: int = SERVER_RESTART, reason: str = "server restarting") -> None:
         for room in list(self._rooms.values()):
             for client in list(room):
                 client.close(code, reason)
+        for client in list(self._admins):
+            client.close(code, reason)

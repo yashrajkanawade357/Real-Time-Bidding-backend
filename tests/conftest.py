@@ -29,6 +29,7 @@ TEST_DSN = os.environ.get(
 
 @pytest.fixture
 def settings():
+    # Pin everything a developer's .env might change, so tests behave the same everywhere.
     return replace(
         load_settings(),
         database_url=TEST_DSN,
@@ -36,6 +37,13 @@ def settings():
         closer_interval=0.2,
         listener_healthcheck=1.0,
         enable_unsafe_demo=False,
+        demo_restock=False,
+        admin_key=None,
+        public_lot_creation=True,
+        trusted_proxy_hops=0,
+        rate_limits=True,
+        cors_origins=(),
+        instance_name="test-instance",
     )
 
 

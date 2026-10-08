@@ -3,514 +3,157 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bidding Floor</title>
+<title>Bidding Floor · live auctions</title>
+<meta name="description" content="Timed auctions with live bidding over WebSockets.">
+<meta name="theme-color" content="#f6f4ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#100f0d" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --bg: #f4f1ea; --panel: #fffdf8; --line: #e2ddd1; --ink: #1c1b18; --muted: #777266;
-    --accent: #a8741a; --accent-soft: #f3e6c8; --up: #1f8a4c; --up-soft: #dcf1e3;
-    --down: #c2412f; --down-soft: #f8e0db; --info: #2f5fb3;
-    --sans: "IBM Plex Sans", system-ui, sans-serif;
-    --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #111210; --panel: #191a17; --line: #2b2c28; --ink: #ecebe4; --muted: #8f8d84;
-      --accent: #e3b04b; --accent-soft: #3a2f17; --up: #52cf86; --up-soft: #173324;
-      --down: #ff7a68; --down-soft: #3c1e19; --info: #7fa8ff;
-    }
-  }
-  :root[data-theme="dark"] {
-    --bg: #111210; --panel: #191a17; --line: #2b2c28; --ink: #ecebe4; --muted: #8f8d84;
-    --accent: #e3b04b; --accent-soft: #3a2f17; --up: #52cf86; --up-soft: #173324;
-    --down: #ff7a68; --down-soft: #3c1e19; --info: #7fa8ff;
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 var(--sans); }
-  button, input, select { font: inherit; color: inherit; }
-  button {
-    border: 1px solid var(--line); background: var(--panel); border-radius: 8px;
-    padding: 8px 12px; cursor: pointer;
-  }
-  button:hover { border-color: var(--muted); }
-  button.primary { background: var(--ink); color: var(--bg); border-color: var(--ink); font-weight: 600; }
-  input, select {
-    border: 1px solid var(--line); background: var(--bg); border-radius: 8px; padding: 8px 10px; min-width: 0;
-  }
-  input:focus, select:focus, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .label { display: block; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-
-  header {
-    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-    padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel);
-  }
-  .brand { font-weight: 600; letter-spacing: -.01em; margin-right: auto; }
-  .brand small { font-weight: 400; color: var(--muted); margin-left: 8px; }
-  .conn { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 13px; }
-  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
-  .conn[data-s="live"] .dot { background: var(--up); box-shadow: 0 0 0 4px var(--up-soft); }
-  .conn[data-s="reconnecting"] .dot, .conn[data-s="connecting"] .dot { background: var(--accent); animation: pulse 1s infinite; }
-  .conn[data-s="offline"] .dot, .conn[data-s="gone"] .dot { background: var(--down); }
-  @keyframes pulse { 50% { opacity: .3; } }
-  .who { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
-  .who input { width: 130px; color: var(--ink); }
-
-  .layout { display: grid; grid-template-columns: 290px 1fr; min-height: calc(100vh - 60px); }
-  aside { border-right: 1px solid var(--line); padding: 18px; }
-  .lots-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-  h2 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0; }
-  #newLot { display: grid; gap: 8px; padding: 12px; margin-bottom: 14px; border: 1px dashed var(--line); border-radius: 10px; }
-  #newLot[hidden] { display: none; }
-  #newLot .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  #newLot label { display: grid; gap: 4px; }
-  #lotList { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-  #lotList button {
-    width: 100%; text-align: left; display: grid; grid-template-columns: 1fr auto; gap: 2px 8px;
-    padding: 10px 12px; border-radius: 10px;
-  }
-  #lotList button[aria-current="true"] { border-color: var(--accent); background: var(--accent-soft); }
-  #lotList .t { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #lotList .p { font-family: var(--mono); }
-  #lotList .s { grid-column: 1 / -1; font-size: 12px; color: var(--muted); font-family: var(--mono); }
-
-  main.stage { padding: 24px 28px 40px; min-width: 0; }
-  .empty { color: var(--muted); padding: 40px 0; max-width: 46ch; }
-  .lot-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-  h1 { font-size: 24px; letter-spacing: -.02em; margin: 0; }
-  .badge { font: 600 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 3px 8px; border-radius: 99px; }
-  .badge.open { background: var(--up-soft); color: var(--up); }
-  .badge.closed { background: var(--down-soft); color: var(--down); }
-
-  .board {
-    display: grid; grid-template-columns: 1.4fr 1fr; gap: 1px; margin: 18px 0 14px;
-    background: var(--line); border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
-  }
-  .board > div { background: var(--panel); padding: 18px 20px; }
-  .amount { display: block; font: 600 clamp(34px, 6vw, 54px)/1.1 var(--mono); letter-spacing: -.03em; margin-top: 4px; }
-  .amount.flash { animation: flash .9s ease-out; }
-  @keyframes flash { 0% { color: var(--up); transform: translateY(-2px); } 100% { color: var(--ink); } }
-  .leader { color: var(--muted); font-size: 14px; }
-  .leader b { color: var(--ink); font-weight: 600; }
-  .time { display: block; font: 500 clamp(26px, 4vw, 38px)/1.2 var(--mono); margin-top: 4px; }
-  .time.urgent { color: var(--down); }
-  .facts { display: flex; gap: 22px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
-  .facts b { color: var(--ink); font-family: var(--mono); font-weight: 500; }
-  .facts abbr { text-decoration: underline dotted; cursor: help; }
-
-  form.bid { display: flex; gap: 8px; flex-wrap: wrap; margin: 18px 0 8px; }
-  form.bid input { width: 180px; font-family: var(--mono); font-size: 17px; }
-  .outbox { font-size: 13px; color: var(--accent); min-height: 20px; }
-  .toast { min-height: 24px; font-size: 14px; }
-  .toast.good { color: var(--up); } .toast.bad { color: var(--down); }
-
-  .drills { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 6px 0 22px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 10px; }
-  .drills .label { margin-right: 4px; }
-  .drills button { font-size: 13px; padding: 6px 10px; }
-  .drills button[aria-pressed="true"] { border-color: var(--down); color: var(--down); }
-
-  .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
-  ol { list-style: none; margin: 8px 0 0; padding: 0; }
-  #bids li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
-  #bids li.mine .who-b { color: var(--accent); font-weight: 600; }
-  #bids li.new { animation: slide .6s ease-out; }
-  @keyframes slide { from { background: var(--up-soft); } to { background: transparent; } }
-  #bids .amt { font-family: var(--mono); font-weight: 500; }
-  #bids .when, #log .when { color: var(--muted); font-family: var(--mono); font-size: 12px; }
-  #log li { padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; display: grid; grid-template-columns: 64px 1fr; gap: 8px; }
-  #log li.bad { color: var(--down); } #log li.good { color: var(--up); } #log li.sys { color: var(--info); }
-
-  @media (max-width: 820px) {
-    .layout { grid-template-columns: 1fr; }
-    aside { border-right: 0; border-bottom: 1px solid var(--line); }
-    main.stage { padding: 18px 16px 32px; }
-    .board, .columns { grid-template-columns: 1fr; }
-    header { padding: 12px 16px; }
-  }
-</style>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Instrument+Serif&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/app.js" defer></script>
 </head>
 <body>
-<header>
-  <div class="brand">Bidding Floor <small>live auction backend</small></div>
-  <div class="conn" id="conn" data-s="offline" role="status"><span class="dot"></span><span id="connText">not connected</span></div>
-  <label class="who">Bidding as <input id="bidder" maxlength="40" autocomplete="off"></label>
+
+<header class="topbar">
+  <a class="brand" href="/">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--brand)"/><path d="M9 8.5h9.2l5.3 5.3v9.7H9z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><circle cx="18" cy="13.5" r="1.6" fill="#fff"/><path d="M12.5 18h7M12.5 21h4.5" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg>
+    <span class="brand-name">Bidding Floor</span>
+  </a>
+  <span class="topbar-meta" id="liveCount"></span>
+  <div class="topbar-right">
+    <button class="conn" id="conn" type="button" data-state="connecting" title="Show the network panel">
+      <span class="conn-dot"></span><span id="connLabel">Connecting</span><span class="conn-ms" id="connMs"></span>
+    </button>
+    <label class="identity" title="Your bidder name">
+      <span class="avatar" id="meAvatar" aria-hidden="true"></span>
+      <input id="bidder" maxlength="40" autocomplete="nickname" spellcheck="false" aria-label="Your bidder name" placeholder="Your name">
+    </label>
+  </div>
 </header>
 
-<div class="layout">
-  <aside>
-    <div class="lots-head"><h2>Lots</h2><button id="newLotBtn" type="button">+ New lot</button></div>
-    <form id="newLot" hidden>
-      <label><span class="label">Title</span><input name="title" required maxlength="120" value="Vintage film camera"></label>
-      <div class="row">
-        <label><span class="label">Start ₹</span><input name="starting_price" type="number" min="1" value="1000" required></label>
-        <label><span class="label">Step ₹</span><input name="min_increment" type="number" min="1" value="50" required></label>
-      </div>
-      <label><span class="label">Runs for</span>
-        <select name="duration_seconds">
-          <option value="60">1 minute</option><option value="180" selected>3 minutes</option>
-          <option value="600">10 minutes</option><option value="3600">1 hour</option>
-        </select>
-      </label>
-      <button class="primary" type="submit">Create lot</button>
-    </form>
-    <ol id="lotList"></ol>
-  </aside>
+<div class="shell">
+  <nav class="lots" aria-label="Lots">
+    <div class="lots-head">
+      <h2>Lots <span id="lotCount"></span></h2>
+      <button class="btn btn-quiet" id="newLotBtn" type="button">+ New lot</button>
+    </div>
+    <ol class="lot-list" id="lotList"></ol>
+  </nav>
 
   <main class="stage">
-    <div class="empty" id="empty">Create a lot, then open this page in a second tab with a different name and bid against yourself.</div>
-    <section id="lot" hidden>
-      <div class="lot-head"><h1 id="title"></h1><span class="badge" id="status"></span></div>
+    <div class="empty" id="empty">
+      <h2>Nothing on the block yet</h2>
+      <p>Put up a lot, then open this page in a second window under a different name and bid against yourself.</p>
+      <button class="btn btn-ink" id="emptyNewLot" type="button">Put up a lot</button>
+    </div>
 
-      <div class="board">
-        <div>
-          <span class="label">Current bid</span>
-          <span class="amount" id="price">—</span>
-          <span class="leader" id="leader"></span>
+    <article class="lot" id="lot" hidden>
+      <header class="lot-head">
+        <p class="eyebrow"><span id="lotNo"></span><span class="dot"></span><span>Timed auction</span><span class="dot"></span><span id="lotOpened"></span></p>
+        <h1 id="lotTitle"></h1>
+        <p class="lot-desc" id="lotDesc"></p>
+      </header>
+
+      <aside class="bidbox" id="bidbox" aria-label="Bidding">
+        <div class="notice" id="notice" role="status" hidden></div>
+        <div class="bidbox-body">
+          <span class="label" id="priceLabel">Current bid</span>
+          <output class="price" id="price" aria-live="polite"></output>
+          <div class="price-sub" id="priceSub"></div>
+
+          <div class="clock">
+            <div class="clock-row"><span class="label" id="clockLabel">Closes in</span><span class="clock-time" id="clock"></span></div>
+            <div class="clock-bar"><span id="clockFill"></span></div>
+          </div>
+
+          <button class="btn btn-ink btn-bid" id="bidBtn" type="button"></button>
+          <div class="jumps" id="jumps"></div>
+
+          <form class="custom" id="customForm" autocomplete="off">
+            <label class="label" for="customAmount">Your own amount</label>
+            <div class="custom-row">
+              <div class="money-input"><span>₹</span><input id="customAmount" inputmode="numeric" pattern="[0-9]*"></div>
+              <button class="btn" type="submit">Place bid</button>
+            </div>
+          </form>
+
+          <p class="pending" id="pending" aria-live="polite"></p>
+          <p class="fine">Every bid is checked against the live price on the server. If someone gets there first, yours is turned down rather than applied.</p>
         </div>
-        <div>
-          <span class="label" id="clockLabel">Ends in</span>
-          <span class="time" id="countdown">--:--</span>
-        </div>
-      </div>
+      </aside>
 
-      <div class="facts">
-        <span>Next bid from <b id="minNext"></b></span>
-        <span><b id="bidCount"></b> bids</span>
-        <span><abbr title="Bumped on every change in the database. Updates older than the version you hold are ignored, so a snapshot and the live feed can never be applied out of order.">Version</abbr> <b id="version"></b></span>
-      </div>
-
-      <form class="bid" id="bidForm">
-        <input id="amount" type="number" min="1" step="1" inputmode="numeric" aria-label="Bid amount" required>
-        <button class="primary" type="submit">Place bid</button>
-        <button type="button" data-steps="1">Min bid</button>
-        <button type="button" data-steps="5">+5 steps</button>
-      </form>
-      <div class="outbox num" id="outbox" aria-live="polite"></div>
-      <div class="toast" id="toast" aria-live="polite"></div>
-
-      <div class="drills">
-        <span class="label">Failure drills</span>
-        <button type="button" id="dropBtn" title="Kill the socket like a network blip; the client reconnects with backoff">Drop connection</button>
-        <button type="button" id="offlineBtn" aria-pressed="false" title="Stay disconnected. Bids queue in an outbox and are sent on reconnect">Go offline</button>
-        <button type="button" id="resyncBtn" title="Ask the server for a fresh snapshot from the database">Resync</button>
-      </div>
-
-      <div class="columns">
-        <div><h2>Bids (from the database)</h2><ol id="bids"></ol></div>
-        <div><h2>This tab's activity</h2><ol id="log"></ol></div>
-      </div>
-    </section>
+      <section class="lot-details">
+        <dl class="facts">
+          <div><dt>Opening bid</dt><dd id="fOpening"></dd></div>
+          <div><dt>Increment</dt><dd id="fIncrement"></dd></div>
+          <div><dt>Bids</dt><dd id="fBids"></dd></div>
+          <div><dt>Closes</dt><dd id="fCloses"></dd></div>
+        </dl>
+        <div class="section-head"><h2>Bid history</h2><span>Read from the database, newest first</span></div>
+        <ol class="history" id="history"></ol>
+      </section>
+    </article>
   </main>
 </div>
 
-<script>
-(() => {
-  const $ = (id) => document.getElementById(id);
-  const money = (n) => (n == null ? "—" : "₹" + Number(n).toLocaleString("en-IN"));
-  const clock = (d = new Date()) => d.toTimeString().slice(0, 8);
-  const newId = () => (window.crypto && crypto.randomUUID ? crypto.randomUUID()
-    : Date.now().toString(36) + Math.random().toString(36).slice(2));
-  const REASONS = {
-    bid_too_low: "too low",
-    auction_closed: "the auction has ended",
-    watch_only: "enter a name to bid",
-    invalid_amount: "not a valid amount",
-  };
+<section class="devtools" id="devtools" data-open="false" aria-label="Network and sync">
+  <button class="devtools-tab" id="devToggle" type="button" aria-expanded="false" aria-controls="devBody">
+    <svg class="chev" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 7.5 6 4l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Network &amp; sync
+    <span class="summary" id="devSummary"></span>
+    <span class="hint">Drop the connection, go offline, watch what the server sends</span>
+  </button>
+  <div class="devtools-body" id="devBody">
+    <div class="dev-stats">
+      <dl>
+        <dt>Socket</dt><dd id="dState">-</dd>
+        <dt>Round trip</dt><dd id="dLatency">-</dd>
+        <dt>Version held</dt><dd id="dVersion">-</dd>
+        <dt>Reconnects</dt><dd id="dReconnects">0</dd>
+        <dt>Unanswered bids</dt><dd id="dQueued">0</dd>
+      </dl>
+      <div class="dev-actions">
+        <button class="btn" id="dropBtn" type="button" title="Close the socket the way a network blip would. The client reconnects with backoff.">Drop connection</button>
+        <button class="btn" id="offlineBtn" type="button" aria-pressed="false" title="Stay disconnected. Bids wait in an outbox and are sent on reconnect.">Go offline</button>
+        <button class="btn" id="resyncBtn" type="button" title="Ask the server for a fresh snapshot from the database.">Resync from database</button>
+      </div>
+    </div>
+    <ol class="wire" id="wire" aria-label="Messages on the socket"></ol>
+  </div>
+</section>
 
-  // ---- identity --------------------------------------------------------
-  const names = ["asha", "bilal", "chen", "dara", "esha", "farid", "gita", "hiro", "isha", "jonah"];
-  let bidder = "";
-  try { bidder = localStorage.getItem("bidder") || ""; } catch {}
-  if (!bidder) bidder = names[Math.floor(Math.random() * names.length)] + "-" + Math.floor(Math.random() * 90 + 10);
-  $("bidder").value = bidder;
-  $("bidder").addEventListener("change", () => {
-    bidder = $("bidder").value.trim().slice(0, 40);
-    try { localStorage.setItem("bidder", bidder); } catch {}
-    log("sys", `Now ${bidder ? "bidding as " + bidder : "watching only"}; reconnecting`);
-    reconnectNow();
-  });
+<dialog id="lotDialog" aria-labelledby="lotDialogTitle">
+  <form id="lotForm">
+    <div class="dialog-head">
+      <h2 id="lotDialogTitle">Put up a lot</h2>
+      <p>It opens for bidding immediately.</p>
+    </div>
+    <div class="dialog-body">
+      <label class="field"><span class="label">Title</span><input name="title" required maxlength="120" placeholder="Leica M6 rangefinder, 1986"></label>
+      <label class="field"><span class="label">Description</span><textarea name="description" maxlength="2000" placeholder="Condition, provenance, anything a bidder should know"></textarea></label>
+      <div class="field-row">
+        <label class="field"><span class="label">Opening bid (₹)</span><input name="starting_price" type="number" min="1" step="1" required value="1000"></label>
+        <label class="field"><span class="label">Increment (₹)</span><input name="min_increment" type="number" min="1" step="1" required value="50"></label>
+      </div>
+      <div class="field">
+        <span class="label" id="durLabel">Runs for</span>
+        <div class="segmented" role="radiogroup" aria-labelledby="durLabel">
+          <input type="radio" name="duration_seconds" id="d2" value="120"><label for="d2">2 min</label>
+          <input type="radio" name="duration_seconds" id="d10" value="600" checked><label for="d10">10 min</label>
+          <input type="radio" name="duration_seconds" id="d60" value="3600"><label for="d60">1 hour</label>
+          <input type="radio" name="duration_seconds" id="d1440" value="86400"><label for="d1440">1 day</label>
+        </div>
+      </div>
+    </div>
+    <div class="dialog-foot">
+      <button class="btn btn-quiet" type="button" id="lotCancel">Cancel</button>
+      <button class="btn btn-ink" type="submit">Open bidding</button>
+    </div>
+  </form>
+</dialog>
 
-  // ---- connection ------------------------------------------------------
-  let lotId = null;          // selected auction
-  let ws = null;             // current socket, null while down
-  let state = null;          // latest auction state, always from the server
-  let bids = [];             // accepted bids, newest first
-  let attempt = 0, retryTimer = null, offline = false, clockOffset = 0;
-  const outbox = new Map();  // request_id -> amount, kept until the server answers
-
-  function setConn(s, delay) {
-    $("conn").dataset.s = s;
-    $("connText").textContent = {
-      live: "live", connecting: "connecting…", offline: "offline (drill)", gone: "lot not found",
-      reconnecting: `reconnecting in ${((delay || 0) / 1000).toFixed(1)}s`,
-    }[s];
-  }
-
-  function connect() {
-    clearTimeout(retryTimer);
-    if (lotId == null || offline) return;
-    const proto = location.protocol === "https:" ? "wss" : "ws";
-    const q = bidder ? `?bidder=${encodeURIComponent(bidder)}` : "";
-    const sock = new WebSocket(`${proto}://${location.host}/ws/auctions/${lotId}${q}`);
-    ws = sock;
-    setConn("connecting");
-    sock.onopen = () => { if (ws === sock) { attempt = 0; setConn("live"); } };
-    sock.onmessage = (e) => { if (ws === sock) handle(JSON.parse(e.data)); };
-    sock.onclose = (e) => {
-      if (ws !== sock) return;            // replaced on purpose
-      ws = null;
-      if (e.code === 4404) { setConn("gone"); return; }
-      if (offline) { setConn("offline"); return; }
-      // Exponential backoff with jitter, so a restarting server isn't hit by every tab at once.
-      const delay = Math.min(8000, 400 * 2 ** attempt) * (0.5 + Math.random() / 2);
-      attempt++;
-      setConn("reconnecting", delay);
-      log("bad", `Connection lost (code ${e.code}). Retrying in ${(delay / 1000).toFixed(1)}s`);
-      retryTimer = setTimeout(connect, delay);
-    };
-  }
-
-  function disconnect() {
-    clearTimeout(retryTimer);
-    const old = ws; ws = null;
-    if (old) old.close(1000);
-  }
-  function reconnectNow() { disconnect(); attempt = 0; connect(); }
-  function send(obj) {
-    if (ws && ws.readyState === WebSocket.OPEN) { ws.send(JSON.stringify(obj)); return true; }
-    return false;
-  }
-
-  // ---- server messages -------------------------------------------------
-  function handle(msg) {
-    switch (msg.type) {
-      case "snapshot": {
-        const before = state && state.id === msg.auction.id ? state.version : null;
-        state = msg.auction;
-        bids = msg.bids;
-        clockOffset = Date.parse(msg.server_time) - Date.now();
-        log("sys", before == null
-          ? `Connected. Snapshot v${state.version} read from the database`
-          : `Snapshot from the database: v${before} → v${state.version}`);
-        render();
-        flushOutbox();
-        break;
-      }
-      case "bid_accepted":
-      case "auction_closed": {
-        if (!state || msg.auction.version <= state.version) return;  // already have this or newer
-        state = msg.auction;
-        if (msg.bid) { bids = [msg.bid, ...bids].slice(0, 50); flashPrice(); }
-        if (msg.type === "auction_closed") {
-          log(state.leader === bidder ? "good" : "sys", state.leader
-            ? `Auction closed. Winner: ${state.leader} at ${money(state.current_price)}`
-            : "Auction closed with no bids");
-        }
-        render(msg.bid && msg.bid.id);
-        break;
-      }
-      case "bid_result": onBidResult(msg); break;
-      case "error": log("bad", `Server: ${msg.message}`); break;
-    }
-  }
-
-  function onBidResult(msg) {
-    const amount = outbox.get(msg.request_id);
-    if (msg.reason === "busy_retry") { setTimeout(flushOutbox, 300); return; }  // stays queued
-    outbox.delete(msg.request_id);
-    renderOutbox();
-    if (msg.accepted) {
-      toast("good", msg.duplicate ? "Already counted. The retry didn't bid twice." : "You're the high bidder.");
-      log("good", `${money(msg.bid.amount)} accepted${msg.duplicate ? " (a retry, not placed twice)" : ""}`);
-    } else {
-      const why = REASONS[msg.reason] || msg.reason;
-      const min = msg.auction && msg.reason === "bid_too_low" ? `; minimum is ${money(msg.auction.min_next_bid)}` : "";
-      toast("bad", `Rejected: ${why}${min}.`);
-      log("bad", `${money(amount ?? (msg.bid && msg.bid.amount))} rejected: ${why}${min}`);
-    }
-    if (msg.auction && state && msg.auction.version > state.version) { state = msg.auction; render(); }
-  }
-
-  // ---- bidding ---------------------------------------------------------
-  function placeBid(amount) {
-    const request_id = newId();
-    outbox.set(request_id, amount);
-    if (!send({ type: "bid", amount, request_id })) {
-      log("sys", `${money(amount)} queued; it will be sent when the connection is back`);
-    }
-    renderOutbox();
-  }
-  function flushOutbox() {
-    for (const [request_id, amount] of outbox) send({ type: "bid", amount, request_id });
-    renderOutbox();
-  }
-
-  $("bidForm").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const amount = parseInt($("amount").value, 10);
-    if (Number.isFinite(amount) && amount > 0) { placeBid(amount); $("amount").value = ""; }
-  });
-  document.querySelectorAll("[data-steps]").forEach((b) => b.addEventListener("click", () => {
-    if (!state) return;
-    $("amount").value = state.min_next_bid + (Number(b.dataset.steps) - 1) * state.min_increment;
-    $("amount").focus();
-  }));
-
-  // ---- failure drills --------------------------------------------------
-  $("dropBtn").addEventListener("click", () => {
-    if (!ws) return;
-    log("bad", "Drill: connection dropped");
-    ws.close(4000, "drill");                // not a clean exit, so the client reconnects
-  });
-  $("offlineBtn").addEventListener("click", () => {
-    offline = !offline;
-    $("offlineBtn").setAttribute("aria-pressed", String(offline));
-    $("offlineBtn").textContent = offline ? "Go online" : "Go offline";
-    if (offline) { log("sys", "Drill: offline. New bids will queue"); disconnect(); setConn("offline"); }
-    else { log("sys", "Drill: back online"); attempt = 0; connect(); }
-  });
-  $("resyncBtn").addEventListener("click", () => send({ type: "resync" }));
-
-  // ---- rendering -------------------------------------------------------
-  function render(newBidId) {
-    $("empty").hidden = !!state;
-    $("lot").hidden = !state;
-    if (!state) return;
-    $("title").textContent = state.title;
-    $("status").textContent = state.status;
-    $("status").className = "badge " + state.status;
-    $("price").textContent = money(state.current_price);
-    const leader = $("leader");
-    leader.replaceChildren();
-    if (state.leader) {
-      const b = document.createElement("b"); b.textContent = state.leader;
-      leader.append(state.status === "closed" ? "won by " : "held by ", b, state.leader === bidder ? " (you)" : "");
-    } else {
-      leader.textContent = `opens at ${money(state.starting_price)}`;
-    }
-    $("minNext").textContent = money(state.min_next_bid);
-    $("bidCount").textContent = state.bid_count;
-    $("version").textContent = "v" + state.version;
-    $("amount").placeholder = state.min_next_bid;
-
-    $("bids").replaceChildren(...bids.map((bid) => {
-      const li = document.createElement("li");
-      if (bid.bidder === bidder) li.classList.add("mine");
-      if (bid.id === newBidId) li.classList.add("new");
-      const who = document.createElement("span"); who.className = "who-b"; who.textContent = bid.bidder;
-      const when = document.createElement("span"); when.className = "when"; when.textContent = clock(new Date(bid.created_at));
-      const left = document.createElement("span"); left.append(who, " ", when);
-      const amt = document.createElement("span"); amt.className = "amt"; amt.textContent = money(bid.amount);
-      li.append(left, amt);
-      return li;
-    }));
-    tick();
-    updateLotRow();
-  }
-
-  function renderOutbox() {
-    $("outbox").textContent = outbox.size
-      ? `Outbox: ${[...outbox.values()].map(money).join(", ")} waiting for the server`
-      : "";
-  }
-  function flashPrice() {
-    const el = $("price"); el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash");
-  }
-  let toastTimer;
-  function toast(kind, text) {
-    $("toast").className = "toast " + kind; $("toast").textContent = text;
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => { $("toast").textContent = ""; }, 4000);
-  }
-  function log(kind, text) {
-    const li = document.createElement("li"); li.className = kind;
-    const when = document.createElement("span"); when.className = "when"; when.textContent = clock();
-    const t = document.createElement("span"); t.textContent = text;
-    li.append(when, t);
-    $("log").prepend(li);
-    while ($("log").children.length > 40) $("log").lastChild.remove();
-  }
-
-  function fmtLeft(ms) {
-    if (ms <= 0) return "00:00";
-    const s = Math.floor(ms / 1000), h = Math.floor(s / 3600);
-    const mm = String(Math.floor((s % 3600) / 60)).padStart(2, "0"), ss = String(s % 60).padStart(2, "0");
-    return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
-  }
-  function tick() {
-    if (!state) return;
-    const ms = Date.parse(state.ends_at) - (Date.now() + clockOffset);  // server clock, not the laptop's
-    if (state.status === "closed") {
-      $("clockLabel").textContent = "Ended at";
-      $("countdown").textContent = clock(new Date(state.closed_at || state.ends_at));
-    } else {
-      $("clockLabel").textContent = ms > 0 ? "Ends in" : "Closing…";
-      $("countdown").textContent = fmtLeft(ms);
-    }
-    $("countdown").classList.toggle("urgent", state.status === "open" && ms < 30000);
-  }
-  setInterval(tick, 250);
-
-  // ---- lots ------------------------------------------------------------
-  let lots = [];
-  async function loadLots() {
-    try { lots = await (await fetch("/auctions")).json(); } catch { return; }
-    renderLots();
-    if (lotId == null) {
-      const fromHash = Number(new URLSearchParams(location.hash.slice(1)).get("lot"));
-      const pick = lots.find((l) => l.id === fromHash) || lots.find((l) => l.status === "open");
-      if (pick) selectLot(pick.id);
-    }
-  }
-  function updateLotRow() {
-    const i = lots.findIndex((l) => l.id === state.id);
-    if (i >= 0) { lots[i] = state; renderLots(); }
-  }
-  function renderLots() {
-    $("lotList").replaceChildren(...lots.map((l) => {
-      const li = document.createElement("li");
-      const b = document.createElement("button"); b.type = "button";
-      b.setAttribute("aria-current", String(l.id === lotId));
-      const t = document.createElement("span"); t.className = "t"; t.textContent = l.title;
-      const p = document.createElement("span"); p.className = "p"; p.textContent = money(l.current_price ?? l.starting_price);
-      const s = document.createElement("span"); s.className = "s";
-      s.textContent = l.status === "closed"
-        ? `#${l.id} · closed · ${l.leader ? "won by " + l.leader : "no bids"}`
-        : `#${l.id} · ${l.bid_count} bids · open`;
-      b.append(t, p, s);
-      b.addEventListener("click", () => selectLot(l.id));
-      li.append(b);
-      return li;
-    }));
-  }
-  function selectLot(id) {
-    if (id === lotId) return;
-    lotId = id; state = null; bids = []; outbox.clear();
-    renderOutbox(); render(); renderLots();
-    $("log").replaceChildren();
-    history.replaceState(null, "", `#lot=${id}`);
-    reconnectNow();
-  }
-
-  $("newLotBtn").addEventListener("click", () => { $("newLot").hidden = !$("newLot").hidden; });
-  $("newLot").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const f = new FormData(e.target);
-    const body = Object.fromEntries([...f].map(([k, v]) => [k, k === "title" ? v : Number(v)]));
-    const res = await fetch("/auctions", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
-    });
-    if (!res.ok) { toast("bad", "Couldn't create the lot"); return; }
-    const lot = await res.json();
-    $("newLot").hidden = true;
-    await loadLots();
-    selectLot(lot.id);
-  });
-
-  loadLots();
-  setInterval(loadLots, 5000);
-})();
-</script>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 </body>
 </html>

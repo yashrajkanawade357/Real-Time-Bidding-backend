@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bidding Floor · live auctions</title>
+<title>Bidding Floor · the floor</title>
 <meta name="description" content="Timed auctions with live bidding over WebSockets.">
 <meta name="theme-color" content="#f6f4ef">
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
@@ -44,7 +44,7 @@
   <main class="stage">
     <div class="empty" id="empty">
       <h2>Nothing on the block yet</h2>
-      <p>Put up a lot, then open this page in a second window under a different name and bid against yourself.</p>
+      <p id="emptyText">Put up a lot, then open this page in a second window under a different name and bid against yourself.</p>
       <button class="btn btn-ink" id="emptyNewLot" type="button">Put up a lot</button>
     </div>
 
@@ -108,6 +108,7 @@
     <div class="dev-stats">
       <dl>
         <dt>Socket</dt><dd id="dState">-</dd>
+        <dt>Instance</dt><dd id="dInstance">-</dd>
         <dt>Round trip</dt><dd id="dLatency">-</dd>
         <dt>Version held</dt><dd id="dVersion">-</dd>
         <dt>Reconnects</dt><dd id="dReconnects">0</dd>

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bidding Floor · live auctions where the highest bid always wins</title>
+<meta name="description" content="A real-time auction backend: WebSocket updates, row-locked bids in PostgreSQL, correct under hundreds of simultaneous bids.">
+<meta name="theme-color" content="#f6f4ef">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/landing.css">
+<script src="/static/landing.js" defer></script>
+</head>
+<body class="no-devtools">
+
+<header class="topbar">
+  <a class="brand" href="/">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#7d1f1b"/><path d="M9 8.5h9.2l5.3 5.3v9.7H9z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><circle cx="18" cy="13.5" r="1.6" fill="#fff"/><path d="M12.5 18h7M12.5 21h4.5" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg>
+    <span class="brand-name">Bidding Floor</span>
+  </a>
+  <nav class="landing-nav" aria-label="Page sections">
+    <a href="#proof">Proof</a>
+    <a href="#how">How it works</a>
+    <a href="#break">Try to break it</a>
+  </nav>
+  <div class="topbar-right">
+    <a class="btn btn-ink" href="/floor">Enter the floor</a>
+  </div>
+</header>
+
+<main class="landing">
+  <section class="hero">
+    <p class="kicker">Real-time bidding backend · FastAPI · PostgreSQL · WebSockets</p>
+    <h1>Live auctions where the <em>highest</em> bid always wins.</h1>
+    <p class="lede">Hundreds of people can bid on the same lot in the same millisecond. Every bid is one database transaction behind a row lock, so the winner is decided by the data, never by whichever request happened to land last.</p>
+    <div class="cta">
+      <a class="btn btn-ink btn-lg" href="/floor">Enter the bidding floor</a>
+      <a class="btn btn-lg" href="https://github.com/yashrajkanawade357/Real-Time-Bidding-backend" rel="noopener">Read the code</a>
+    </div>
+    <p class="tip">Open the floor in two windows with different names and bid against yourself.</p>
+  </section>
+
+  <section class="live" aria-labelledby="liveTitle">
+    <div class="band-head">
+      <h2 id="liveTitle">On the block now</h2>
+      <span class="live-status" id="liveStatus">loading from the database</span>
+    </div>
+    <ol class="live-lots" id="liveLots"></ol>
+  </section>
+
+  <section class="proof" id="proof" aria-labelledby="proofTitle">
+    <div class="band-head">
+      <h2 id="proofTitle">300 bids, released at the same instant</h2>
+      <span>Amounts 100 to 399 in random order, one connection per bidder</span>
+    </div>
+    <div class="versus">
+      <article class="side side-safe">
+        <p class="side-label">With the row lock</p>
+        <p class="side-figure">₹399</p>
+        <p class="side-caption">The highest bid won. Every run, every check.</p>
+        <ul>
+          <li><b>0.40 s</b> for all 300 bids</li>
+          <li><b>9</b> accepted, each higher than the last</li>
+          <li><b>0</b> times a lower bid replaced a higher one</li>
+        </ul>
+      </article>
+      <article class="side side-unsafe">
+        <p class="side-label">Same code, lock removed</p>
+        <p class="side-figure">₹292</p>
+        <p class="side-caption">The lot went to someone who bid 292 while 399 was on the table.</p>
+        <ul>
+          <li><b>243</b> bidders told they had the high bid</li>
+          <li><b>123</b> times a lower bid overwrote a higher one</li>
+          <li>Wrong winner in <b>5 of 6</b> runs</li>
+        </ul>
+      </article>
+    </div>
+    <p class="footnote">Measured with <code>scripts/race_demo.py</code>. The unlocked path exists only for this comparison and is switched off on this server.</p>
+  </section>
+
+  <section class="how" id="how" aria-labelledby="howTitle">
+    <div class="band-head"><h2 id="howTitle">How it stays correct</h2></div>
+    <img class="figure" src="/static/img/row-lock.svg" width="960" height="540" alt="Three simultaneous bids queue on the auction row lock: 1,050 is accepted, then 1,200, then 1,100 is rejected because the minimum is now 1,250. Without the lock all three read 1,000 and the last write wins.">
+    <div class="points">
+      <article>
+        <h3>One lock per lot</h3>
+        <p>Each bid takes the lot's row lock and is checked against the committed price, so bids queue and arrival order stops mattering.</p>
+      </article>
+      <article>
+        <h3>The database is the only state</h3>
+        <p>Servers hold sockets, never prices. A refresh, a reconnect or a brand-new server all read the same rows.</p>
+      </article>
+      <article>
+        <h3>Versioned events</h3>
+        <p>Every change carries a version. Clients ignore anything older than what they hold, so a snapshot and the live feed can't arrive out of order.</p>
+      </article>
+      <article>
+        <h3>Retries that don't double-bid</h3>
+        <p>Each bid has its own id. A client that lost its connection resends it, and the server returns the original outcome instead of bidding twice.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="break" id="break" aria-labelledby="breakTitle">
+    <div class="band-head"><h2 id="breakTitle">Try to break it</h2></div>
+    <ol class="steps">
+      <li><b>Bid against yourself.</b> Open the floor in two windows, give each a different name, and outbid one from the other. The losing window says who outbid it, the moment the bid commits.</li>
+      <li><b>Pull the plug.</b> Open the floor with the network panel, choose <i>Go offline</i>, and queue a bid. Outbid yourself from the other window, then go back online. The queued bid is judged against the price now, and turned down.</li>
+      <li><b>Watch the wire.</b> The same panel lists every message on the socket with the version it carries, and which server instance you landed on.</li>
+    </ol>
+    <a class="btn btn-lg" href="/floor?debug">Open the floor with the network panel</a>
+  </section>
+
+  <section class="stack" aria-labelledby="stackTitle">
+    <div class="band-head"><h2 id="stackTitle">What's running</h2></div>
+    <img class="figure" src="/static/img/architecture.svg" width="960" height="430" alt="Browsers connect to two API instances. Each bid is one Postgres transaction, and Postgres notifies every instance after commit.">
+    <p class="stack-note">On AWS: one EC2 instance behind CloudFront (HTTPS), nginx spreading visitors across two API instances, PostgreSQL alongside. The whole server builds itself from one boot script, and the same stack is tested in CI on every push.</p>
+  </section>
+</main>
+
+<footer class="site-foot">
+  <span>Built by Yashraj Kanawade</span>
+  <nav aria-label="Project links">
+    <a href="https://github.com/yashrajkanawade357/Real-Time-Bidding-backend" rel="noopener">GitHub</a>
+    <a href="https://github.com/yashrajkanawade357/Real-Time-Bidding-backend/blob/main/docs/DESIGN.md" rel="noopener">Design notes</a>
+    <a href="https://github.com/yashrajkanawade357/Real-Time-Bidding-backend/blob/main/docs/SECURITY.md" rel="noopener">Security</a>
+    <a href="/docs">API</a>
+  </nav>
+</footer>
+</body>
+</html>

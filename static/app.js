@@ -87,7 +87,11 @@
     latency: null,
     outbox: new Map(), // request_id -> amount, until the server answers
     outbidBy: null,
+    instance: null,    // which API instance our socket landed on
+    publicLots: true,  // may visitors open lots on this server?
   };
+  // The network panel is a demo/debugging tool: shown only with ?debug in the URL.
+  const DEBUG = new URLSearchParams(location.search).has("debug");
 
   function randomName() {
     const names = ["asha", "bilal", "chen", "dara", "esha", "farid", "gita", "hiro", "ira", "jonah", "kavya", "leo"];
@@ -170,6 +174,7 @@
         S.auction = a;
         S.bids = msg.bids;
         S.offset = Date.parse(msg.server_time) - Date.now();
+        if (msg.instance) S.instance = msg.instance;
         render();
         flushOutbox();
         return;
@@ -187,6 +192,15 @@
         S.auction = a;
         if (msg.bid) S.bids = [msg.bid, ...S.bids].slice(0, 50);
         render(msg.bid && msg.bid.id);
+        return;
+      }
+
+      case "auction_removed": {
+        if (!S.auction || msg.auction.id !== S.auction.id || msg.auction.version <= S.auction.version) return;
+        wire("in", msg.type, "withdrawn by the auctioneer", msg.auction.version);
+        S.auction = msg.auction;
+        S.lots = S.lots.filter((l) => l.id !== msg.auction.id);
+        render();
         return;
       }
 
@@ -313,7 +327,8 @@
     // notice strip
     const notice = $("notice");
     let kind = null, text = "", cta = false;
-    if (closed && leading) { kind = "lead"; text = "You won this lot."; }
+    if (a.removed_at) { kind = "muted"; text = "This lot was withdrawn by the auctioneer."; }
+    else if (closed && leading) { kind = "lead"; text = "You won this lot."; }
     else if (closed) { kind = "muted"; text = "Bidding has closed."; }
     else if (leading) { kind = "lead"; text = "You're the highest bidder."; }
     else if (S.outbidBy) { kind = "warn"; text = `You've been outbid by ${S.outbidBy}.`; cta = true; }
@@ -402,6 +417,7 @@
   function renderDev() {
     const v = S.auction ? `v${S.auction.version}` : "-";
     $("dVersion").textContent = v;
+    $("dInstance").textContent = S.instance || "-";
     $("dReconnects").textContent = S.reconnects;
     $("dQueued").textContent = S.outbox.size;
     const ms = S.conn === "live" && S.latency != null ? ` · ${S.latency} ms` : "";
@@ -549,7 +565,7 @@
     store.set("devtools", open ? "1" : "0");
   }
   $("devToggle").addEventListener("click", () => setDevtools($("devtools").dataset.open !== "true"));
-  $("conn").addEventListener("click", () => setDevtools(true));
+  $("conn").addEventListener("click", () => { if (DEBUG) setDevtools(true); });
 
   $("dropBtn").addEventListener("click", () => {
     if (!S.ws) return;
@@ -619,9 +635,21 @@
   });
 
   // ------------------------------------------------------------------ boot
+  async function loadConfig() {
+    try {
+      const config = await (await fetch("/config")).json();
+      S.publicLots = config.public_lot_creation;
+    } catch { /* keep defaults */ }
+    $("newLotBtn").hidden = !S.publicLots;
+    $("emptyNewLot").hidden = !S.publicLots;
+    if (!S.publicLots) $("emptyText").textContent = "No lots are open right now. New lots are opened by the auctioneer.";
+  }
+
   renderMe();
-  setDevtools(store.get("devtools") === "1");
+  if (DEBUG) setDevtools(store.get("devtools") === "1");
+  else { $("devtools").hidden = true; document.body.classList.add("no-devtools"); }
   renderConn();
+  loadConfig();
   loadLots();
   setInterval(loadLots, 5000);
 })();

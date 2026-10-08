@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Admin · Bidding Floor</title>
+<meta name="theme-color" content="#f6f4ef">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Instrument+Serif&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/admin.css">
+<script src="/static/admin.js" defer></script>
+</head>
+<body class="no-devtools">
+
+<header class="topbar">
+  <a class="brand" href="/">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#7d1f1b"/><path d="M9 8.5h9.2l5.3 5.3v9.7H9z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><circle cx="18" cy="13.5" r="1.6" fill="#fff"/><path d="M12.5 18h7M12.5 21h4.5" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg>
+    <span class="brand-name">Bidding Floor</span>
+  </a>
+  <span class="tag tag-admin">Admin</span>
+  <div class="topbar-right" id="sessionBar" hidden>
+    <span class="conn" id="feedConn" data-state="connecting"><span class="conn-dot"></span><span id="feedLabel">Feed connecting</span></span>
+    <a class="btn btn-quiet" href="/floor" target="_blank" rel="noopener">Open the floor</a>
+    <button class="btn" id="lockBtn" type="button">Lock</button>
+  </div>
+</header>
+
+<main class="admin">
+  <section class="gate" id="gate">
+    <form class="gate-card" id="gateForm" autocomplete="off">
+      <h1>Admin access</h1>
+      <p>Enter the access key for this server.</p>
+      <label class="field">
+        <span class="label">Access key</span>
+        <input id="keyInput" type="password" required minlength="24" spellcheck="false" autocomplete="off">
+      </label>
+      <button class="btn btn-ink gate-btn" type="submit">Unlock</button>
+      <p class="gate-error" id="gateError" role="alert"></p>
+      <details class="gate-help">
+        <summary>Where do I find the key?</summary>
+        <p>The server generates it the first time it boots and never stores it in the code. On AWS, run <code>bash aws-launch.sh admin-key</code> in CloudShell. Running locally, put <code>ADMIN_KEY=</code> followed by 24 or more characters in <code>.env</code>.</p>
+        <p>The key is kept in this tab only and forgotten when you close it. Ten wrong keys lock your address out for a minute.</p>
+      </details>
+    </form>
+  </section>
+
+  <div class="console" id="console" hidden>
+    <section class="stats" aria-label="Totals">
+      <div><span class="label">Open lots</span><b id="sOpen">-</b></div>
+      <div><span class="label">Closed</span><b id="sClosed">-</b></div>
+      <div><span class="label">Removed</span><b id="sRemoved">-</b></div>
+      <div><span class="label">Accepted bids</span><b id="sAccepted">-</b></div>
+      <div><span class="label">Rejected bids</span><b id="sRejected">-</b><small id="sReasons"></small></div>
+      <div><span class="label">Bids, last hour</span><b id="sHour">-</b></div>
+    </section>
+
+    <div class="grid">
+      <section class="panel lots-panel" aria-labelledby="lotsTitle">
+        <header class="panel-head">
+          <h2 id="lotsTitle">Lots</h2>
+          <div class="filter" role="group" aria-label="Show lots">
+            <button type="button" data-filter="all" aria-pressed="true">All</button>
+            <button type="button" data-filter="open" aria-pressed="false">Open</button>
+            <button type="button" data-filter="closed" aria-pressed="false">Closed</button>
+            <button type="button" data-filter="removed" aria-pressed="false">Removed</button>
+          </div>
+        </header>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th>Lot</th><th>Status</th><th class="num">Price</th><th>Leader</th><th class="num">Bids</th><th>Closes</th><th class="actions-col"><span class="sr">Actions</span></th></tr></thead>
+            <tbody id="lotRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <aside class="side-col">
+        <section class="panel" aria-labelledby="newTitle">
+          <header class="panel-head"><h2 id="newTitle">Open a lot</h2></header>
+          <form class="new-lot" id="newLot" autocomplete="off">
+            <label class="field"><span class="label">Title</span><input name="title" required maxlength="120"></label>
+            <label class="field"><span class="label">Description</span><textarea name="description" maxlength="2000" rows="3"></textarea></label>
+            <div class="field-row">
+              <label class="field"><span class="label">Opening bid (₹)</span><input name="starting_price" type="number" min="1" step="1" required value="1000"></label>
+              <label class="field"><span class="label">Increment (₹)</span><input name="min_increment" type="number" min="1" step="1" required value="50"></label>
+            </div>
+            <div class="field">
+              <span class="label" id="durLabel">Runs for</span>
+              <div class="segmented" role="radiogroup" aria-labelledby="durLabel">
+                <input type="radio" name="duration_seconds" id="a10" value="600"><label for="a10">10 min</label>
+                <input type="radio" name="duration_seconds" id="a60" value="3600" checked><label for="a60">1 hour</label>
+                <input type="radio" name="duration_seconds" id="a1440" value="86400"><label for="a1440">1 day</label>
+                <input type="radio" name="duration_seconds" id="a10080" value="604800"><label for="a10080">7 days</label>
+              </div>
+            </div>
+            <button class="btn btn-ink" type="submit">Open bidding</button>
+          </form>
+        </section>
+
+        <section class="panel" aria-labelledby="instTitle">
+          <header class="panel-head"><h2 id="instTitle">Instances</h2><span class="muted" id="servedBy"></span></header>
+          <ul class="instances" id="instances"></ul>
+        </section>
+
+        <section class="panel" aria-labelledby="setTitle">
+          <header class="panel-head"><h2 id="setTitle">Server settings</h2><span class="muted">set by environment</span></header>
+          <dl class="settings" id="settings"></dl>
+        </section>
+      </aside>
+    </div>
+
+    <section class="panel" aria-labelledby="feedTitle">
+      <header class="panel-head">
+        <h2 id="feedTitle">Live feed</h2>
+        <span class="muted">every committed change on every lot, as Postgres announces it</span>
+      </header>
+      <ol class="wire feed" id="feed"><li class="feed-empty">Waiting for the first event…</li></ol>
+    </section>
+
+    <section class="panel" aria-labelledby="logTitle">
+      <header class="panel-head">
+        <h2 id="logTitle">Bid log</h2>
+        <label class="check"><input type="checkbox" id="rejectedOnly"> Rejected only</label>
+      </header>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Time</th><th>Lot</th><th>Bidder</th><th class="num">Amount</th><th>Outcome</th><th>Request id</th></tr></thead>
+          <tbody id="bidRows"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

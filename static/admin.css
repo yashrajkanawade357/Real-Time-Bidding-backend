@@ -1,0 +1,116 @@
+/* Admin portal. Shares tokens and components with app.css. */
+
+.tag-admin { background: var(--ink); color: var(--paper); margin-left: -8px; }
+.btn { text-decoration: none; color: inherit; }
+.btn-ink { color: var(--paper); }
+.muted { color: var(--muted); font-size: 12.5px; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+.admin { max-width: 1320px; margin: 0 auto; padding: 28px 28px 64px; }
+
+/* lock screen */
+.gate { display: grid; place-items: center; min-height: calc(100vh - 160px); }
+.gate-card {
+  width: min(420px, 100%); display: grid; gap: 14px; padding: 30px 28px 24px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow);
+}
+.gate-card h1 { margin: 0; font: 400 36px/1.05 var(--serif); }
+.gate-card > p { margin: -6px 0 4px; color: var(--muted); }
+.gate-card input {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: 8px;
+  background: var(--paper); font-family: var(--mono); letter-spacing: .04em;
+}
+.gate-card input:focus { outline: none; border-color: var(--focus); }
+.gate-btn { height: 42px; }
+.gate-error { min-height: 18px; margin: 0; font-size: 13px; color: var(--danger); }
+.gate-help { font-size: 13px; color: var(--ink-2); border-top: 1px solid var(--line); padding-top: 12px; }
+.gate-help summary { cursor: pointer; color: var(--ink); }
+.gate-help p { margin: 10px 0 0; line-height: 1.55; }
+code { font-family: var(--mono); font-size: .92em; background: var(--sunken); padding: 1px 5px; border-radius: 4px; }
+
+/* totals */
+.stats {
+  display: grid; grid-template-columns: repeat(6, 1fr); margin-bottom: 22px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+}
+.stats > div { padding: 16px 18px; display: grid; gap: 4px; }
+.stats > div + div { border-left: 1px solid var(--line); }
+.stats b { font: 400 34px/1 var(--serif); font-variant-numeric: lining-nums; }
+.stats small { font-size: 11.5px; color: var(--muted); line-height: 1.4; }
+
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 22px; align-items: start; margin-bottom: 22px; }
+.side-col { display: grid; gap: 22px; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.console > .panel { margin-bottom: 22px; }
+.panel-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 14px 18px; border-bottom: 1px solid var(--line);
+}
+.panel-head h2 { margin: 0; font-size: 14px; font-weight: 600; }
+
+.filter { display: flex; padding: 2px; border-radius: 8px; background: var(--sunken); }
+.filter button { border: 0; background: transparent; padding: 4px 10px; border-radius: 6px; font-size: 12.5px; color: var(--ink-2); }
+.filter button[aria-pressed="true"] { background: var(--surface); color: var(--ink); font-weight: 500; box-shadow: 0 1px 2px rgb(0 0 0 / 10%); }
+
+/* tables */
+.table-wrap { overflow-x: auto; max-height: 520px; }
+.table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.table th {
+  position: sticky; top: 0; z-index: 1; background: var(--surface);
+  text-align: left; padding: 9px 14px; font-size: 11px; font-weight: 500; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); white-space: nowrap;
+}
+.table td { padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.table tr:last-child td { border-bottom: 0; }
+.table .num { text-align: right; font-family: var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.table .mono { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.table .lot-no { display: block; font: 500 11px var(--mono); color: var(--muted); }
+.table .lot-title { font-weight: 500; }
+.table tr.is-removed .lot-title { text-decoration: line-through; color: var(--muted); }
+.table .empty { padding: 22px 14px; color: var(--muted); }
+.actions-col { width: 1%; }
+.row-actions { display: flex; gap: 6px; justify-content: flex-end; white-space: nowrap; }
+.row-actions .btn { height: 28px; padding: 0 10px; font-size: 12.5px; }
+.btn-danger { border-color: var(--danger); color: var(--danger); }
+.btn-danger.is-armed { background: var(--danger); color: #fff; }
+
+.chip-open { color: var(--lead); background: var(--lead-bg); }
+.chip-removed { color: var(--danger); background: var(--danger-bg); }
+.outcome-accepted { color: var(--lead); }
+.outcome-rejected { color: var(--danger); }
+
+/* side panels */
+.new-lot { display: grid; gap: 12px; padding: 16px 18px 18px; }
+.instances { list-style: none; margin: 0; padding: 6px 0; }
+.instances li { display: grid; grid-template-columns: 10px 1fr auto; gap: 10px; align-items: center; padding: 8px 18px; font-size: 13.5px; }
+.instances .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+.instances .alive .dot { background: var(--lead); box-shadow: 0 0 0 3px var(--lead-bg); }
+.instances .name { font-family: var(--mono); }
+.instances small { color: var(--muted); font-size: 12px; }
+.instances .count { font-variant-numeric: tabular-nums; color: var(--ink-2); }
+.settings { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; margin: 0; padding: 14px 18px 16px; font-size: 13px; }
+.settings dt { color: var(--ink-2); }
+.settings dd { margin: 0; font-family: var(--mono); font-size: 12px; }
+.settings .on { color: var(--lead); }
+.settings .off { color: var(--muted); }
+
+/* live feed reuses .wire from app.css */
+.feed { max-height: 300px; }
+.feed .lot { color: var(--ink-2); }
+.feed-empty { padding: 14px 20px !important; color: var(--muted); display: block !important; }
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); }
+
+@media (max-width: 1100px) {
+  .grid { grid-template-columns: minmax(0, 1fr); }
+  .stats { grid-template-columns: repeat(3, 1fr); }
+  .stats > div:nth-child(4) { border-left: 0; }
+  .stats > div:nth-child(n+4) { border-top: 1px solid var(--line); }
+}
+@media (max-width: 640px) {
+  .admin { padding: 18px 14px 48px; }
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .stats > div:nth-child(odd) { border-left: 0; }
+  .stats > div:nth-child(n+3) { border-top: 1px solid var(--line); }
+  .topbar .btn-quiet { display: none; }
+}

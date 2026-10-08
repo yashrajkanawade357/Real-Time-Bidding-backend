@@ -47,6 +47,7 @@ body {
   padding-bottom: var(--devtools-h);
 }
 body.devtools-open { padding-bottom: 300px; }
+body.no-devtools { padding-bottom: 0; --devtools-h: 0px; }
 button, input, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
@@ -373,8 +374,8 @@ dialog::backdrop { background: rgb(15 14 10 / 45%); backdrop-filter: blur(2px); 
 .field textarea { resize: vertical; min-height: 64px; }
 .field input:focus, .field textarea:focus { outline: none; border-color: var(--focus); }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.segmented { display: grid; grid-template-columns: repeat(4, 1fr); padding: 3px; border-radius: 9px; background: var(--sunken); }
-.segmented input { position: absolute; opacity: 0; pointer-events: none; }
+.segmented { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); padding: 3px; border-radius: 9px; background: var(--sunken); }
+.segmented input { position: absolute; width: 1px; height: 1px; margin: 0; opacity: 0; pointer-events: none; }
 .segmented label { padding: 6px 0; text-align: center; border-radius: 7px; font-size: 13px; color: var(--ink-2); cursor: pointer; }
 .segmented input:checked + label { background: var(--surface); color: var(--ink); font-weight: 500; box-shadow: 0 1px 2px rgb(0 0 0 / 12%); }
 .segmented input:focus-visible + label { outline: 2px solid var(--focus); }

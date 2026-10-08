@@ -26,6 +26,16 @@ from app.realtime import router as realtime_router
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 STATIC_DIR = ROOT / "static"
+# Browsers re-check the client files on every load (a cheap 304 when unchanged),
+# so a redeploy is picked up immediately - there is no build step to hash names.
+REVALIDATE = {"Cache-Control": "no-cache"}
+
+
+class RevalidatedStaticFiles(StaticFiles):
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers.update(REVALIDATE)
+        return response
 
 
 class AuctionCreate(BaseModel):
@@ -107,11 +117,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(realtime_router)
-    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    app.mount("/static", RevalidatedStaticFiles(directory=STATIC_DIR), name="static")
 
     @app.get("/", include_in_schema=False)
     async def index() -> FileResponse:
-        return FileResponse(STATIC_DIR / "index.html")
+        return FileResponse(STATIC_DIR / "index.html", headers=REVALIDATE)
 
     @app.get("/health")
     async def health(request: Request) -> dict:

@@ -115,7 +115,7 @@ button { cursor: pointer; }
 }
 .brand svg { width: 24px; height: 24px; flex: none; }
 .topbar-meta { color: var(--muted); font-size: 13px; }
-.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; min-width: 0; }
 
 .conn {
   display: inline-flex; align-items: center; gap: 8px;
@@ -137,9 +137,10 @@ button { cursor: pointer; }
   display: inline-flex; align-items: center; gap: 8px;
   height: 32px; padding: 0 4px 0 4px;
   border: 1px solid var(--line); border-radius: 99px; background: var(--surface);
+  min-width: 0;
 }
 .identity input {
-  width: 120px; border: 0; background: transparent; padding: 0 8px 0 0;
+  width: 120px; min-width: 40px; border: 0; background: transparent; padding: 0 8px 0 0;
   font-weight: 500;
 }
 .identity input:focus { outline: none; }
@@ -225,9 +226,10 @@ button { cursor: pointer; }
 .bidbox { grid-area: box; }
 
 .eyebrow {
-  display: flex; align-items: center; gap: 8px; margin: 0 0 14px;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin: 0 0 14px;
   font: 500 12px var(--mono); color: var(--muted); letter-spacing: .03em;
 }
+.eyebrow > span { white-space: nowrap; }
 .eyebrow .dot { width: 3px; height: 3px; border-radius: 50%; background: var(--faint); }
 .lot h1 {
   margin: 0 0 14px;
@@ -426,7 +428,7 @@ body.devtools-open .toast { bottom: 316px; }
   .shell { grid-template-columns: minmax(0, 1fr); }
   .lots { border-right: 0; border-bottom: 1px solid var(--line); padding: 12px 0 12px; }
   .lots-head { padding: 0 16px 8px; }
-  .lot-list { display: flex; gap: 8px; overflow-x: auto; padding: 0 16px 4px; scroll-snap-type: x mandatory; }
+  .lot-list { display: flex; gap: 8px; overflow-x: auto; padding: 0 16px 4px; scroll-snap-type: x mandatory; scrollbar-width: thin; }
   .lot-list li { flex: 0 0 220px; scroll-snap-align: start; }
   .lot-card { border-color: var(--line); background: var(--surface); }
   .stage { padding: 24px 16px 40px; }
@@ -449,6 +451,9 @@ body.devtools-open .toast { bottom: 316px; }
 
 @media (max-width: 480px) {
   .brand-name { display: none; }
+  .topbar { gap: 8px; padding: 0 12px; }
+  .identity input { width: 76px; }
+  .lot-list li { flex-basis: 200px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

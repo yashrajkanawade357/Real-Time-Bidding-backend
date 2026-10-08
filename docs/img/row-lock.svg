@@ -15,16 +15,7 @@
       .serif { font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; }
       .sans { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
       .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-      @media (prefers-color-scheme: dark) {
-        .bg { fill: #181714; stroke: #2a2924; }
-        .ink { fill: #f0eee7; } .muted { fill: #8d897e; } .faint { stroke: #2a2924; }
-        .hold { fill: #f0eee7; } .hold-t { fill: #181714; }
-        .wait { stroke: #3a3832; } .hatch-line { stroke: #3a3832; }
-        .ok { fill: #62cf95; } .ok-bg { fill: #142c1f; }
-        .no { fill: #ff7d70; } .no-bg { fill: #371613; } .no-stroke { stroke: #ff7d70; }
-        .axis { stroke: #5d5a52; }
-      }
-    </style>
+          </style>
     <pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
       <line class="hatch-line" x1="0" y1="0" x2="0" y2="7" stroke-width="2"/>
     </pattern>

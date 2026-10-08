@@ -14,17 +14,7 @@
       .serif { font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; }
       .sans { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
       .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-      @media (prefers-color-scheme: dark) {
-        .bg { fill: #181714; stroke: #2a2924; }
-        .box { fill: #1f1e1a; stroke: #3a3832; }
-        .db { fill: #13120f; stroke: #3a3832; }
-        .row { fill: #1f1e1a; stroke: #2a2924; }
-        .ink { fill: #f0eee7; } .muted { fill: #8d897e; }
-        .line { stroke: #f0eee7; }
-        .notify { stroke: #e2665d; } .notify-t { fill: #e2665d; }
-        .head { fill: #f0eee7; } .head-n { fill: #e2665d; }
-      }
-    </style>
+          </style>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path class="head" d="M0 0 L10 5 L0 10 z"/>
     </marker>

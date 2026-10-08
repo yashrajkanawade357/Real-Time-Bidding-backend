@@ -8,10 +8,7 @@ every dropped connection, and after a full restart.
 
 **Python 3.13 · FastAPI · WebSockets · PostgreSQL row locks and LISTEN/NOTIFY**
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/img/hero-dark.png">
-  <img src="docs/img/hero-light.png" alt="Lot page for an Omega Seamaster 300. The bid panel tells the viewer they have been outbid by arjun.m and offers a one-click bid at the next increment. The bid history, read from the database, lists six bids.">
-</picture>
+<img src="docs/img/hero.png" alt="Lot page for an Omega Seamaster 300. The bid panel tells the viewer they have been outbid by arjun.m and offers a one-click bid at the next increment. The bid history, read from the database, lists six bids.">
 
 ## Two bidders, one lot
 

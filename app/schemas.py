@@ -16,7 +16,8 @@ class AuctionCreate(BaseModel):
 
 
 class BidIn(BaseModel):
-    bidder: str = Field(min_length=1, max_length=40)
+    # Ignored when the server requires login: the name comes from the account.
+    bidder: str | None = Field(default=None, min_length=1, max_length=40)
     amount: int = Field(ge=1, le=MAX_AMOUNT)
     # Optional idempotency key. Send the same one when retrying a bid whose
     # response you never got, and you'll get the original outcome back.

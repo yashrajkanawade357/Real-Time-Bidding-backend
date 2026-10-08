@@ -20,6 +20,11 @@ Why this is correct under concurrency:
 4. Each bid carries a client-chosen request_id. A resend (say, after a dropped
    connection, when the client can't know whether the first attempt landed)
    returns the stored outcome instead of bidding twice.
+
+5. Anti-sniping: a bid accepted in the last `soft_close` seconds pushes the
+   end back to `soft_close` seconds after it. That happens in the same UPDATE,
+   under the same lock, so the deadline every client sees always matches the
+   bids that were actually accepted.
 """
 
 from __future__ import annotations
@@ -84,7 +89,8 @@ async def _notify(conn: asyncpg.Connection, event: dict[str, Any]) -> None:
 
 
 async def place_bid(
-    pool: asyncpg.Pool, auction_id: int, bidder: str, amount: int, request_id: str
+    pool: asyncpg.Pool, auction_id: int, bidder: str, amount: int, request_id: str,
+    *, user_id: int | None = None, soft_close: int = 0,
 ) -> BidOutcome:
     try:
         async with pool.acquire() as conn, conn.transaction():
@@ -115,8 +121,8 @@ async def place_bid(
             reason = _rejection_reason(auction, amount)
             bid = await conn.fetchrow(
                 f"""
-                INSERT INTO bids (auction_id, bidder, amount, request_id, status, reason)
-                VALUES ($1, $2, $3, $4, $5, $6)
+                INSERT INTO bids (auction_id, bidder, amount, request_id, status, reason, user_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
                 RETURNING {BID_COLUMNS}
                 """,
                 auction_id,
@@ -125,22 +131,30 @@ async def place_bid(
                 request_id,
                 "rejected" if reason else "accepted",
                 reason,
+                user_id,
             )
             if reason is not None:
                 # Recorded for the audit trail; the auction itself is untouched.
                 return BidOutcome(False, False, reason, bid_dict(bid, private=True), auction_dict(auction))
 
+            # now() is when this bid's transaction began. If that's inside the
+            # soft-close window, the auction now ends soft_close seconds later.
             updated = await conn.fetchrow(
                 f"""
                 UPDATE auctions
                 SET current_price = $2, leader = $3,
-                    bid_count = bid_count + 1, version = version + 1
+                    bid_count = bid_count + 1, version = version + 1,
+                    ends_at = CASE WHEN $4::int > 0 AND ends_at - now() < make_interval(secs => $4::int)
+                                   THEN now() + make_interval(secs => $4::int) ELSE ends_at END,
+                    extensions = extensions + CASE WHEN $4::int > 0 AND ends_at - now() < make_interval(secs => $4::int)
+                                                   THEN 1 ELSE 0 END
                 WHERE id = $1
                 RETURNING {AUCTION_COLUMNS}
                 """,
                 auction_id,
                 amount,
                 bidder,
+                soft_close,
             )
             auction_out = auction_dict(updated)
             # Everyone hears about the bid; only the bidder gets its request_id back.

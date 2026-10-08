@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from app import admin, auctions, bidding, db, demo
+from app import admin, auctions, auth, bidding, db, demo
 from app.config import ROOT, Settings, load_settings
 from app.events import EventListener
 from app.hub import Hub
@@ -138,6 +138,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                                                enabled=settings.rate_limits)
     # Always on: 10 wrong admin keys, then one more try every 6 seconds.
     app.state.admin_failures = RateLimiter(10 / 60, 10)
+    app.state.signup_limiter = RateLimiter(settings.signups_per_hour / 3600, settings.signups_per_hour,
+                                           enabled=settings.rate_limits)
+    # Always on: 10 wrong passwords, then one more try every 6 seconds.
+    app.state.login_failures = RateLimiter(10 / 60, 10)
     # The shareable judge key gets a budget of changes per minute per address.
     app.state.judge_writes = RateLimiter(settings.judge_writes_per_min / 60, settings.judge_writes_per_min)
 
@@ -152,6 +156,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
     app.include_router(realtime_router)
     app.include_router(admin.router)
+    app.include_router(auth.router)
     app.mount("/static", RevalidatedStaticFiles(directory=STATIC_DIR), name="static")
 
     def ip_of(request: Request) -> str:
@@ -172,6 +177,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/admin", include_in_schema=False)
     async def admin_portal() -> FileResponse:
         return page("admin.html")
+
+    @app.get("/login", include_in_schema=False)
+    async def login_page() -> FileResponse:
+        return page("login.html")
 
     @app.get("/health")
     async def health(request: Request) -> dict:
@@ -194,6 +203,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "public_lot_creation": settings.public_lot_creation,
             "instance": settings.instance_name,
             "judge_key": judge_key,
+            "require_login": settings.require_login,
+            "soft_close_seconds": settings.soft_close_seconds,
         }
 
     @app.post("/auctions", status_code=201)
@@ -240,15 +251,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         },
     )
     async def post_bid(auction_id: int, body: BidIn, request: Request) -> JSONResponse:
+        auth.require_same_origin(request)
         if not request.app.state.bid_limiter.allow(ip_of(request)):
             raise HTTPException(429, "too many bids from your address; slow down")
+        if settings.require_login:
+            # Who is bidding comes from the session, never from the request body.
+            user = await auth.current_user(request)
+            if user is None:
+                raise HTTPException(401, "log in to bid")
+            bidder, user_id = user.display_name, user.id
+        else:
+            if not body.bidder or not body.bidder.strip():
+                raise HTTPException(422, "bidder is required")
+            bidder, user_id = body.bidder.strip(), None
         try:
             outcome = await bidding.place_bid(
                 request.app.state.pool,
                 auction_id,
-                body.bidder.strip(),
+                bidder,
                 body.amount,
                 body.request_id or uuid.uuid4().hex,
+                user_id=user_id,
+                soft_close=settings.soft_close_seconds,
             )
         except bidding.AuctionNotFound:
             raise HTTPException(404, "auction not found") from None
@@ -262,7 +286,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(404, "not found")
         try:
             outcome = await bidding.place_bid_unsafe(
-                request.app.state.pool, auction_id, body.bidder.strip(), body.amount,
+                request.app.state.pool, auction_id, (body.bidder or "anonymous").strip(), body.amount,
                 settings.unsafe_delay_ms,
             )
         except bidding.AuctionNotFound:

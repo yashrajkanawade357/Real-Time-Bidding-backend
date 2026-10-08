@@ -33,6 +33,7 @@ class Client:
         self.auction_id = auction_id
         self.bidder = bidder
         self.ip = ip
+        self.user_id: int | None = None
         self._queue: asyncio.Queue[str] = asyncio.Queue(maxsize=queue_max)
         self._closing = asyncio.Event()
         self._close_args: tuple[int, str] | None = None

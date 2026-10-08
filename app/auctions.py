@@ -10,7 +10,7 @@ import asyncpg
 
 AUCTION_COLUMNS = """
     id, title, description, starting_price, min_increment, current_price,
-    leader, bid_count, version, status, ends_at, created_at, closed_at, removed_at
+    leader, bid_count, version, status, ends_at, created_at, closed_at, removed_at, extensions
 """
 
 BID_COLUMNS = "id, auction_id, bidder, amount, request_id, status, reason, created_at"
@@ -43,6 +43,7 @@ def auction_dict(row: asyncpg.Record) -> dict[str, Any]:
         "created_at": _iso(row["created_at"]),
         "closed_at": _iso(row["closed_at"]),
         "removed_at": _iso(row["removed_at"]),
+        "extensions": row["extensions"],
         "version": row["version"],
     }
 

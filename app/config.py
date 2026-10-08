@@ -64,6 +64,13 @@ class Settings:
     judge_access: bool = False
     judge_open_lot_cap: int = 12
     judge_writes_per_min: int = 30
+    # Bidding needs an account; the bidder name comes from it, never the client.
+    require_login: bool = False
+    # Set the session cookie's Secure flag (true behind HTTPS).
+    cookie_secure: bool = False
+    signups_per_hour: int = 20
+    # Anti-sniping: a bid this close to the end pushes the end back this far. 0 = off.
+    soft_close_seconds: int = 30
 
 
 def load_settings() -> Settings:
@@ -95,6 +102,10 @@ def load_settings() -> Settings:
         judge_access=_bool("JUDGE_ACCESS", False),
         judge_open_lot_cap=_int("JUDGE_OPEN_LOT_CAP", 12),
         judge_writes_per_min=_int("JUDGE_WRITES_PER_MIN", 30),
+        require_login=_bool("REQUIRE_LOGIN", False),
+        cookie_secure=_bool("COOKIE_SECURE", False),
+        signups_per_hour=_int("SIGNUPS_PER_HOUR", 20),
+        soft_close_seconds=_int("SOFT_CLOSE_SECONDS", 30),
     )
 
 

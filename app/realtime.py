@@ -28,7 +28,7 @@ from typing import Any
 import asyncpg
 from fastapi import APIRouter, WebSocket
 
-from app import admin, auctions, bidding
+from app import admin, auctions, auth, bidding
 from app.config import MAX_AMOUNT
 from app.hub import Client
 from app.security import RateLimiter, client_ip
@@ -37,6 +37,7 @@ router = APIRouter()
 
 NOT_FOUND = 4404
 UNAUTHORIZED = 4401
+FORBIDDEN = 4403
 TRY_AGAIN_LATER = 1013
 
 # Per socket: a person clicking "Bid" never gets near this; a script hammering
@@ -57,7 +58,9 @@ def _ip_of(ws: WebSocket) -> str:
     return client_ip(ws.scope.get("headers", []), peer, ws.app.state.settings.trusted_proxy_hops)
 
 
-async def _handle_bid(pool: asyncpg.Pool, limiter: RateLimiter, client: Client, msg: dict[str, Any]) -> None:
+async def _handle_bid(
+    pool: asyncpg.Pool, limiter: RateLimiter, soft_close: int, client: Client, msg: dict[str, Any]
+) -> None:
     request_id, amount = msg.get("request_id"), msg.get("amount")
     if client.bidder is None:
         client.offer(_bid_error(request_id, "watch_only"))
@@ -76,7 +79,8 @@ async def _handle_bid(pool: asyncpg.Pool, limiter: RateLimiter, client: Client, 
         # ROLLBACK rather than being torn down halfway. The client learns the
         # outcome by resending the same request_id after it reconnects.
         outcome = await asyncio.shield(
-            bidding.place_bid(pool, client.auction_id, client.bidder, amount, request_id)
+            bidding.place_bid(pool, client.auction_id, client.bidder, amount, request_id,
+                              user_id=client.user_id, soft_close=soft_close)
         )
     except bidding.AuctionBusy:
         client.offer(_bid_error(request_id, "busy_retry"))
@@ -85,7 +89,7 @@ async def _handle_bid(pool: asyncpg.Pool, limiter: RateLimiter, client: Client, 
 
 
 async def _on_message(
-    pool: asyncpg.Pool, limiter: RateLimiter, instance: str, client: Client, text: str
+    pool: asyncpg.Pool, limiter: RateLimiter, instance: str, soft_close: int, client: Client, text: str
 ) -> None:
     try:
         msg = json.loads(text)
@@ -94,7 +98,7 @@ async def _on_message(
     kind = msg.get("type") if isinstance(msg, dict) else None
 
     if kind == "bid":
-        await _handle_bid(pool, limiter, client, msg)
+        await _handle_bid(pool, limiter, soft_close, client, msg)
     elif kind == "resync":
         snapshot = await auctions.snapshot_message(pool, client.auction_id, instance=instance)
         if snapshot is not None:
@@ -110,14 +114,25 @@ async def _on_message(
 async def auction_socket(ws: WebSocket, auction_id: int, bidder: str | None = None) -> None:
     state = ws.app.state
     settings = state.settings
-    bidder = (bidder or "").strip()[:40] or None  # no name = watch only
     ip = _ip_of(ws)
     await ws.accept()
+    # Another website's page can't open a socket here with a visitor's cookie.
+    if not auth.same_origin(ws.headers):
+        await ws.close(code=FORBIDDEN, reason="cross-site connection refused")
+        return
     if settings.rate_limits and state.hub.connections_from(ip) >= settings.ws_connections_per_ip:
         await ws.close(code=TRY_AGAIN_LATER, reason="too many connections from your address")
         return
+    user_id = None
+    if settings.require_login:
+        # The bidder is whoever the session cookie belongs to; ?bidder= is ignored.
+        user = await auth.user_for_token(state.pool, ws.cookies.get(auth.COOKIE))
+        bidder, user_id = (user.display_name, user.id) if user else (None, None)
+    else:
+        bidder = (bidder or "").strip()[:40] or None  # no name = watch only
 
     client = Client(ws, auction_id, bidder, state.hub.queue_max, ip=ip)
+    client.user_id = user_id
     # Subscribe first, then read the snapshot. Any event committed in between is
     # queued behind the snapshot and either already reflected in it (same or
     # lower version, ignored by the client) or newer (applied). Nothing is lost.
@@ -128,7 +143,8 @@ async def auction_socket(ws: WebSocket, auction_id: int, bidder: str | None = No
             await ws.close(code=NOT_FOUND, reason="auction not found")
             return
         client.offer(snapshot)
-        await client.serve(partial(_on_message, state.pool, state.socket_bid_limiter, settings.instance_name))
+        await client.serve(partial(_on_message, state.pool, state.socket_bid_limiter, settings.instance_name,
+                                   settings.soft_close_seconds))
     finally:
         state.hub.leave(client)
 

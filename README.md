@@ -115,8 +115,13 @@ at `/floor`.
 
 <img src="docs/img/admin.png" alt="Admin portal: totals, a lots table with Close now and Remove actions, a form to open a lot, live instances with their socket counts, a live feed of every event across all lots, and the full bid log including rejected bids.">
 
-`/admin` unlocks with an **access key** that the server generates for itself
-(never stored in the code). From there the auctioneer can:
+`/admin` unlocks with an **access key**. There are two:
+
+- **The owner key**: the server generates it for itself, and it's never stored in the code.
+- **A shareable judge key**: the landing page shows it, with a button that opens the portal ready to use, so judges can try everything without asking.
+
+The owner can rotate or switch off the judge key at any time, and the portal
+logs every change with the key that made it. From there the auctioneer can:
 
 - **Run lots**: open them, close one early (the current leader wins), or remove one from the floor.
 - **Watch every lot live**: a feed of every committed change, as Postgres announces it.
@@ -133,7 +138,7 @@ Postgres, SSH and the API containers can't be reached from the internet.
 
 | Area | Controls |
 |---|---|
-| **Admin** | Access key compared in constant time; locked out after 10 wrong tries |
+| **Admin** | Owner key and a shareable judge key, compared in constant time; locked out after 10 wrong tries; judges are capped, can't touch keys, and every change is logged by role |
 | **Abuse** | Per-address rate limits for bids, sockets and new lots; body and message size caps |
 | **Browser** | A strict Content-Security-Policy, with no inline scripts at all |
 | **Secrets** | Generated on the server; none in the repository |

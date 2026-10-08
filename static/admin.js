@@ -37,9 +37,9 @@
       headers: { ...(options.headers || {}), Authorization: `Bearer ${key}`,
                  ...(options.body ? { "Content-Type": "application/json" } : {}) },
     });
-    if (res.status === 401 || res.status === 404) throw new Locked(res.status === 404 ? "The admin portal is switched off on this server." : "That key wasn't accepted.");
-    if (res.status === 429) throw new Locked("Too many wrong keys from your address. Wait a minute and try again.");
+    if (res.status === 401 || res.status === 404) throw new Locked(res.status === 404 ? "The admin portal is switched off on this server." : "That key isn't accepted. It may have been rotated; the landing page always shows the current judge key.");
     const body = await res.json().catch(() => ({}));
+    if (res.status === 429 && /wrong keys/.test(body.detail || "")) throw new Locked("Too many wrong keys from your address. Wait a minute and try again.");
     if (!res.ok) throw new Error(body.detail || `request failed (${res.status})`);
     return body;
   }
@@ -53,6 +53,7 @@
     if (feed) { const f = feed; feed = null; f.close(); }
     $("console").hidden = true;
     $("sessionBar").hidden = true;
+    $("roleTag").hidden = true;
     $("gate").hidden = false;
     $("gateError").textContent = message || "";
     $("keyInput").value = "";
@@ -90,15 +91,17 @@
 
   // ------------------------------------------------------------- data
   async function refresh() {
-    const [overview, lotList, bids] = await Promise.all([
+    const [overview, lotList, bids, activity] = await Promise.all([
       api("/admin/api/overview"),
       api("/admin/api/lots"),
       api(`/admin/api/bids?limit=150&rejected_only=${$("rejectedOnly").checked}`),
+      api("/admin/api/activity?limit=50"),
     ]);
     lots = lotList;
     renderOverview(overview);
     renderLots();
     renderBids(bids);
+    renderActivity(activity, overview.you === "owner");
   }
 
   function renderOverview(o) {
@@ -110,6 +113,10 @@
     $("sReasons").textContent = Object.entries(o.rejected_by_reason).map(([r, n]) => `${n} ${r.replace(/_/g, " ")}`).join(" · ");
     $("sHour").textContent = o.bids.last_hour.toLocaleString("en-IN");
     $("servedBy").textContent = `you're on ${o.served_by}`;
+    $("roleTag").hidden = false;
+    $("roleTag").textContent = o.you === "owner" ? "Owner" : "Judge";
+    $("roleTag").classList.toggle("is-owner", o.you === "owner");
+    renderJudgePanel(o);
 
     $("instances").replaceChildren(...(o.instances.length ? o.instances.map((i) => {
       const li = el("li", i.alive ? "alive" : "");
@@ -163,6 +170,70 @@
         el("td", "mono", shortTime(l.closed_at || l.ends_at)),
         actions,
       );
+      return tr;
+    }));
+  }
+
+  let judgeEnabled = false;
+  function renderJudgePanel(o) {
+    const panel = $("judgePanel");
+    panel.hidden = !(o.you === "owner" && o.judge_access);
+    if (panel.hidden) return;
+    judgeEnabled = o.judge_access.enabled;
+    $("judgeState").textContent = judgeEnabled ? "on · shown on the landing page" : "off";
+    $("judgeKeyText").textContent = o.judge_access.key || "-";
+    $("judgeKeyText").classList.toggle("is-off", !judgeEnabled);
+    $("judgeToggle").textContent = judgeEnabled ? "Switch off" : "Switch on";
+  }
+
+  $("judgeToggle").addEventListener("click", async () => {
+    try {
+      await api(`/admin/api/judge-key/${judgeEnabled ? "disable" : "enable"}`, { method: "POST" });
+      toast(judgeEnabled ? "Judge key switched off. The landing page stops showing it." : "Judge key switched back on.");
+      await refresh();
+    } catch (err) { onError(err); }
+  });
+
+  // Rotating cuts off everyone holding the old key: two clicks.
+  let rotateArmed = null;
+  $("judgeRotate").addEventListener("click", async () => {
+    const b = $("judgeRotate");
+    if (!rotateArmed) {
+      b.textContent = "Confirm rotate";
+      b.classList.add("is-armed");
+      rotateArmed = setTimeout(() => { rotateArmed = null; b.textContent = "Rotate key"; b.classList.remove("is-armed"); }, 4000);
+      return;
+    }
+    clearTimeout(rotateArmed);
+    rotateArmed = null;
+    b.textContent = "Rotate key";
+    b.classList.remove("is-armed");
+    try {
+      await api("/admin/api/judge-key/rotate", { method: "POST" });
+      toast("New judge key issued. The old one has stopped working.");
+      await refresh();
+    } catch (err) { onError(err); }
+  });
+
+  function renderActivity(rows, isOwner) {
+    $("ipHead").hidden = !isOwner;
+    if (!rows.length) {
+      const td = el("td", "empty", "No changes yet.");
+      td.colSpan = isOwner ? 5 : 4;
+      const tr = el("tr");
+      tr.append(td);
+      $("actRows").replaceChildren(tr);
+      return;
+    }
+    $("actRows").replaceChildren(...rows.map((r) => {
+      const tr = el("tr");
+      tr.append(
+        el("td", "mono", time(r.at)),
+        el("td", `role-${r.role}`, r.role),
+        el("td", null, r.action),
+        el("td", null, (r.auction_id ? lotNo(r.auction_id) + " · " : "") + (r.detail || "")),
+      );
+      if (isOwner) tr.append(el("td", "mono", r.ip || "-"));
       return tr;
     }));
   }
@@ -328,6 +399,13 @@
   }
 
   // ------------------------------------------------------------- boot
+  // The landing page's "Open the admin portal" passes the judge key in the URL
+  // fragment (never sent to the server). Take it, then wipe it from the address bar.
+  const fromLink = new URLSearchParams(location.hash.slice(1)).get("key");
+  if (fromLink) {
+    key = fromLink;
+    history.replaceState(null, "", location.pathname);
+  }
   if (key) unlock();
   else lock();
 })();

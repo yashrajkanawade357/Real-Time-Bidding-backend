@@ -78,6 +78,25 @@ code { font-family: var(--mono); font-size: .92em; }
 }
 .steps b { color: var(--ink); font-weight: 600; }
 
+/* judges / admin */
+.judge-card { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 36px; align-items: start; }
+.judge-copy p { margin: 0 0 16px; max-width: 56ch; color: var(--ink-2); line-height: 1.6; }
+.judge-copy ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.judge-copy li { position: relative; padding-left: 20px; color: var(--ink-2); line-height: 1.55; }
+.judge-copy li::before { content: ""; position: absolute; left: 0; top: .62em; width: 8px; height: 1px; background: var(--ink); }
+.judge-copy b { color: var(--ink); font-weight: 600; }
+.key-box {
+  display: grid; gap: 12px; padding: 22px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow);
+}
+.key {
+  display: block; padding: 12px 14px; border-radius: 9px; background: var(--sunken);
+  font: 500 14px/1.4 var(--mono); letter-spacing: .02em; word-break: break-all; color: var(--ink);
+}
+.key-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.key-note { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.key-box.is-off .key { color: var(--muted); font-family: var(--sans); font-weight: 400; }
+
 .stack-note { max-width: 72ch; margin: 22px 0 0; color: var(--ink-2); line-height: 1.6; }
 
 .site-foot {
@@ -91,6 +110,7 @@ code { font-family: var(--mono); font-size: .92em; }
 
 @media (max-width: 900px) {
   .points { grid-template-columns: 1fr 1fr; }
+  .judge-card { grid-template-columns: 1fr; }
   .landing-nav { display: none; }
 }
 @media (max-width: 640px) {

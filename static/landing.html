@@ -25,6 +25,7 @@
     <a href="#proof">Proof</a>
     <a href="#how">How it works</a>
     <a href="#break">Try to break it</a>
+    <a href="#admin">Admin</a>
   </nav>
   <div class="topbar-right">
     <a class="btn btn-ink" href="/floor">Enter the floor</a>
@@ -112,6 +113,33 @@
       <li><b>Watch the wire.</b> The same panel lists every message on the socket with the version it carries, and which server instance you landed on.</li>
     </ol>
     <a class="btn btn-lg" href="/floor?debug">Open the floor with the network panel</a>
+  </section>
+
+  <section class="judges" id="admin" aria-labelledby="adminTitle">
+    <div class="band-head">
+      <h2 id="adminTitle">Run the auction yourself</h2>
+      <span>The admin portal, open to judges</span>
+    </div>
+    <div class="judge-card">
+      <div class="judge-copy">
+        <p>The admin portal is where the auctioneer works. Every bid on every lot arrives there live, rejected ones included, with the reason.</p>
+        <ul>
+          <li><b>Open a lot</b>, then bid on it from the floor in another window.</li>
+          <li><b>Close a lot early.</b> The current leader wins, and every viewer is told at once.</li>
+          <li><b>Remove a lot.</b> It disappears from the floor while people are looking at it.</li>
+          <li><b>Watch both server instances</b> share the visitors between them.</li>
+        </ul>
+      </div>
+      <div class="key-box" id="keyBox">
+        <span class="label">Judge access key</span>
+        <code class="key" id="judgeKey">loading…</code>
+        <div class="key-actions">
+          <button class="btn" id="copyKey" type="button">Copy key</button>
+          <a class="btn btn-ink" id="openAdmin" href="/admin">Open the admin portal</a>
+        </div>
+        <p class="key-note">Full control, shared on purpose. Every change is logged with who made it, and the owner can rotate or switch off this key at any time.</p>
+      </div>
+    </div>
   </section>
 
   <section class="stack" aria-labelledby="stackTitle">

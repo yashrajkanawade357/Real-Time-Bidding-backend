@@ -98,6 +98,34 @@ Internet ──HTTPS──▶ CloudFront ──HTTP, port 80──▶ EC2 securi
   so nobody can fill the demo with junk.
   *Checked by:* `test_public_lot_creation_can_be_switched_off`, and CI.
 
+### The judge key
+
+The public demo also has a second, **shareable** key (`JUDGE_ACCESS=true`), so
+judges can use the admin portal without asking. The landing page shows it, and
+its "Open the admin portal" button unlocks the portal in one click.
+
+- **In the URL, never in logs.** That button passes the key in the URL
+  *fragment* (`/admin#key=…`), which browsers never send to the server. The
+  portal reads it and wipes it from the address bar at once.
+- **Full control over lots, with limits.** A judge can open, close and remove
+  lots, but:
+  - at most **12 open lots** at a time;
+  - **30 changes per minute** per address;
+  - it **can't touch keys**.
+  *Checked by:* `test_judges_can_only_keep_a_few_lots_open`,
+  `test_judge_changes_are_rate_limited`, `test_judges_cannot_touch_keys`.
+- **Under the owner's control.** It lives in the database, not the
+  environment, so you can **rotate** it or **switch it off** from the portal
+  instantly, with no redeploy. A judge's open tab locks itself within seconds
+  of a rotation, and the landing page shows the new key.
+  *Checked by:* `test_owner_rotates_and_disables_the_judge_key`.
+- **Every change is attributed.** Opening, closing and removing lots, and
+  key changes, are written to `admin_actions` with the role that made them.
+  The portal shows that log; client addresses are visible to the owner only.
+  *Checked by:* `test_every_change_is_attributed`.
+- **Self-healing.** If someone removes every lot, the demo restock reopens fresh
+  ones within about 20 seconds.
+
 ### Browser
 
 Every response sets:
@@ -159,6 +187,7 @@ vulnerabilities**.
 |---|---|---|
 | **Bidders aren't authenticated.** Anyone can bid under any name. | It's a demo of concurrency, not identity. | Sign-in (e.g. Amazon Cognito), with the bidder name taken from the verified token, never the client. |
 | **One shared admin key**, no per-person accounts. | There is one auctioneer. | SSO or Cognito with roles, and every admin action attributed to a person. |
+| **The judge key is public**, so anyone who finds the landing page can open, close and remove lots. | That's the point: judges try it without asking. The damage is bounded (12 open lots, 30 changes/min), every action is logged, lots reopen themselves, and the owner can rotate or switch the key off in one click. | Per-judge invitations with expiry, issued from the owner account. |
 | **The admin key can be read from the EC2 console log** (`aws-launch.sh admin-key`). | Only principals in the AWS account can read it. | AWS Secrets Manager or SSM Parameter Store, read through an instance role. |
 | **CloudFront → origin is plain HTTP** inside AWS's network. | The origin only accepts CloudFront. | TLS to the origin, or CloudFront VPC origins with no public IP at all. |
 | **Rate limits are per instance and in memory**, so two instances double the effective limit. | Enough to stop casual floods. | AWS WAF rate-based rules on CloudFront, or a shared limiter. |

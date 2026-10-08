@@ -22,6 +22,7 @@
     <span class="brand-name">Bidding Floor</span>
   </a>
   <span class="tag tag-admin">Admin</span>
+  <span class="tag tag-role" id="roleTag" hidden></span>
   <div class="topbar-right" id="sessionBar" hidden>
     <span class="conn" id="feedConn" data-state="connecting"><span class="conn-dot"></span><span id="feedLabel">Feed connecting</span></span>
     <a class="btn btn-quiet" href="/floor" target="_blank" rel="noopener">Open the floor</a>
@@ -42,7 +43,8 @@
       <p class="gate-error" id="gateError" role="alert"></p>
       <details class="gate-help">
         <summary>Where do I find the key?</summary>
-        <p>The server generates it the first time it boots and never stores it in the code. On AWS, run <code>bash aws-launch.sh admin-key</code> in CloudShell. Running locally, put <code>ADMIN_KEY=</code> followed by 24 or more characters in <code>.env</code>.</p>
+        <p><b>Judges:</b> the landing page shows the current judge key, and its "Open the admin portal" button unlocks this page for you.</p>
+        <p><b>Owner:</b> The server generates it the first time it boots and never stores it in the code. On AWS, run <code>bash aws-launch.sh admin-key</code> in CloudShell. Running locally, put <code>ADMIN_KEY=</code> followed by 24 or more characters in <code>.env</code>.</p>
         <p>The key is kept in this tab only and forgotten when you close it. Ten wrong keys lock your address out for a minute.</p>
       </details>
     </form>
@@ -100,6 +102,18 @@
           </form>
         </section>
 
+        <section class="panel" id="judgePanel" aria-labelledby="judgeTitle" hidden>
+          <header class="panel-head"><h2 id="judgeTitle">Judge access</h2><span class="muted" id="judgeState"></span></header>
+          <div class="judge-body">
+            <p class="muted">A second key with full control over lots, shown on the landing page so judges can try the portal on their own. It can't change keys.</p>
+            <code class="judge-key" id="judgeKeyText">-</code>
+            <div class="row-actions">
+              <button class="btn" type="button" id="judgeToggle">Switch off</button>
+              <button class="btn btn-danger" type="button" id="judgeRotate">Rotate key</button>
+            </div>
+          </div>
+        </section>
+
         <section class="panel" aria-labelledby="instTitle">
           <header class="panel-head"><h2 id="instTitle">Instances</h2><span class="muted" id="servedBy"></span></header>
           <ul class="instances" id="instances"></ul>
@@ -118,6 +132,19 @@
         <span class="muted">every committed change on every lot, as Postgres announces it</span>
       </header>
       <ol class="wire feed" id="feed"><li class="feed-empty">Waiting for the first event…</li></ol>
+    </section>
+
+    <section class="panel" aria-labelledby="actTitle">
+      <header class="panel-head">
+        <h2 id="actTitle">Admin activity</h2>
+        <span class="muted">every change made here, and which key made it</span>
+      </header>
+      <div class="table-wrap">
+        <table class="table">
+          <thead><tr><th>Time</th><th>Who</th><th>Action</th><th>Details</th><th id="ipHead">Address</th></tr></thead>
+          <tbody id="actRows"></tbody>
+        </table>
+      </div>
     </section>
 
     <section class="panel" aria-labelledby="logTitle">

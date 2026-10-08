@@ -69,6 +69,39 @@
     }
   }, 500);
 
+  // Judge access: the key is public by design, served by /config.
+  async function loadJudgeKey() {
+    const box = document.getElementById("keyBox");
+    const code = document.getElementById("judgeKey");
+    const open = document.getElementById("openAdmin");
+    const copy = document.getElementById("copyKey");
+    let key = null;
+    try { key = (await (await fetch("/config")).json()).judge_key; } catch { /* leave it off */ }
+    if (!key) {
+      box.classList.add("is-off");
+      code.textContent = "Judge access is switched off right now. Ask the author for a key.";
+      copy.hidden = true;
+      return;
+    }
+    code.textContent = key;
+    // The key rides in the URL fragment, which browsers never send to the server.
+    open.href = "/admin#key=" + encodeURIComponent(key);
+    copy.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(key);
+        copy.textContent = "Copied";
+      } catch {
+        const range = document.createRange();
+        range.selectNodeContents(code);
+        getSelection().removeAllRanges();
+        getSelection().addRange(range);
+        copy.textContent = "Selected, press Ctrl+C";
+      }
+      setTimeout(() => { copy.textContent = "Copy key"; }, 2000);
+    });
+  }
+
   load();
+  loadJudgeKey();
   setInterval(load, 5000);
 })();

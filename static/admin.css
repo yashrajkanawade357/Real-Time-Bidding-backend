@@ -80,6 +80,16 @@ code { font-family: var(--mono); font-size: .92em; background: var(--sunken); pa
 .outcome-accepted { color: var(--lead); }
 .outcome-rejected { color: var(--danger); }
 
+.tag-role { margin-left: -14px; background: var(--sunken); color: var(--ink-2); }
+.tag-role.is-owner { background: var(--lead-bg); color: var(--lead); }
+.judge-body { display: grid; gap: 12px; padding: 14px 18px 16px; }
+.judge-body p { margin: 0; line-height: 1.5; }
+.judge-key { display: block; padding: 10px 12px; border-radius: 8px; background: var(--sunken); font: 500 12.5px/1.4 var(--mono); word-break: break-all; }
+.judge-key.is-off { color: var(--muted); text-decoration: line-through; }
+.judge-body .row-actions { justify-content: flex-start; }
+.role-owner { color: var(--lead); font-weight: 500; }
+.role-judge { color: var(--ink-2); font-weight: 500; }
+
 /* side panels */
 .new-lot { display: grid; gap: 12px; padding: 16px 18px 18px; }
 .instances { list-style: none; margin: 0; padding: 6px 0; }

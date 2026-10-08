@@ -4,3 +4,4 @@ websockets>=13
 pytest>=8
 pytest-asyncio>=0.24
 pip-audit>=2.7
+pytest-github-actions-annotate-failures>=0.2

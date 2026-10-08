@@ -62,6 +62,8 @@ async def test_concurrent_late_bids_stay_consistent(pool):
     ))
     accepted = sum(o.accepted for o in outcomes)
     row = await pool.fetchrow("SELECT extensions, ends_at - now() AS left FROM auctions WHERE id = $1", a["id"])
-    assert row["extensions"] == accepted  # every accepted bid was inside the window
+    # Not every accepted bid extends: one that *arrived* before the previous
+    # winner (but got the lock after it) is already inside the new deadline.
+    assert 1 <= row["extensions"] <= accepted
     assert row["left"] > timedelta(seconds=WINDOW - 5)
     await assert_consistent(pool, a["id"])

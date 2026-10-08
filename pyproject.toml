@@ -1,0 +1,11 @@
+[project]
+name = "realtime-bidding-backend"
+version = "1.0.0"
+description = "Live auction backend: WebSocket updates, row-locked bids, Postgres as the source of truth."
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning:websockets.*"]

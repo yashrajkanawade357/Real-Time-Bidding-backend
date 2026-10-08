@@ -27,8 +27,9 @@ instance_id() {
 # First free-tier eligible size from a sensible list (the eligible set differs per account).
 pick_type() {
   local free t
+  # Text output separates names with tabs and newlines; flatten to single spaces.
   free=$(aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true \
-    --query 'InstanceTypes[].InstanceType' --output text)
+    --query 'InstanceTypes[].InstanceType' --output text | tr -s '[:space:]' ' ')
   for t in t3.micro t2.micro t3.small t4g.micro t4g.small; do
     case " $free " in *" $t "*) echo "$t"; return;; esac
   done

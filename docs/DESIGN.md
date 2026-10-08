@@ -249,7 +249,7 @@ WebSockets natively and needs no stickiness either.
 - The same 300 bids through the unsafe path, over six runs: lower bids
   replaced higher ones **102 to 134 times** per run, and the **wrong bidder
   won in five of the six**.
-- 27 automated tests against a real Postgres, all passing. CI also runs both
+- 68 automated tests against a real Postgres, all passing. CI also runs both
   demo scripts against a live server.
 
 ## FAQ

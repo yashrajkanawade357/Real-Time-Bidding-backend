@@ -143,7 +143,7 @@ async def _start_session(pool: asyncpg.Pool, response: Response, user: User, sec
                         httponly=True, samesite="lax", secure=secure)
 
 
-@router.post("/signup", status_code=201)
+@router.post("/signup", status_code=201, summary="Create an account")
 async def signup(body: SignupIn, request: Request, response: Response) -> dict[str, Any]:
     require_same_origin(request)
     state = request.app.state
@@ -172,7 +172,7 @@ async def signup(body: SignupIn, request: Request, response: Response) -> dict[s
     return {"user": user.public()}
 
 
-@router.post("/login")
+@router.post("/login", summary="Log in")
 async def login(body: LoginIn, request: Request, response: Response) -> dict[str, Any]:
     require_same_origin(request)
     state = request.app.state
@@ -193,7 +193,7 @@ async def login(body: LoginIn, request: Request, response: Response) -> dict[str
     return {"user": user.public()}
 
 
-@router.post("/logout", status_code=204)
+@router.post("/logout", status_code=204, summary="Log out")
 async def logout(request: Request, response: Response) -> None:
     require_same_origin(request)
     token = request.cookies.get(COOKIE)
@@ -202,7 +202,7 @@ async def logout(request: Request, response: Response) -> None:
     response.delete_cookie(COOKIE, path="/")
 
 
-@router.get("/me")
+@router.get("/me", summary="Who am I")
 async def me(request: Request) -> dict[str, Any]:
     user = await current_user(request)
     return {"user": user.public() if user else None, "require_login": request.app.state.settings.require_login}

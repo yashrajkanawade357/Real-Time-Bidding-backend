@@ -182,7 +182,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def login_page() -> FileResponse:
         return page("login.html")
 
-    @app.get("/health")
+    @app.get("/health", tags=["system"])
     async def health(request: Request) -> dict:
         state = request.app.state
         db_ok = await state.pool.fetchval("SELECT 1") == 1
@@ -194,7 +194,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "instance": settings.instance_name,
         }
 
-    @app.get("/config")
+    @app.get("/config", tags=["system"])
     async def client_config(request: Request) -> dict:
         """What the browser pages need to know about this deployment. With
         JUDGE_ACCESS on, that includes the judge key: it's meant to be public."""
@@ -207,7 +207,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "soft_close_seconds": settings.soft_close_seconds,
         }
 
-    @app.post("/auctions", status_code=201)
+    @app.post("/auctions", status_code=201, tags=["auctions"], summary="Open a lot")
     async def create_auction(body: AuctionCreate, request: Request) -> dict:
         if not settings.public_lot_creation:
             raise HTTPException(403, "lots are opened by the auctioneer on this server")
@@ -215,18 +215,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(429, "too many new lots from your address; try again shortly")
         return await auctions.create(request.app.state.pool, **body.model_dump())
 
-    @app.get("/auctions")
+    @app.get("/auctions", tags=["auctions"], summary="List lots")
     async def list_auctions(request: Request) -> list[dict]:
         return await auctions.list_all(request.app.state.pool)
 
-    @app.get("/auctions/{auction_id}")
+    @app.get("/auctions/{auction_id}", tags=["auctions"], summary="One lot with its recent bids")
     async def get_auction(auction_id: int, request: Request) -> dict:
         snap = await auctions.snapshot(request.app.state.pool, auction_id)
         if snap is None:
             raise HTTPException(404, "auction not found")
         return snap
 
-    @app.get("/auctions/{auction_id}/bids")
+    @app.get("/auctions/{auction_id}/bids", tags=["auctions"], summary="Bid history")
     async def get_bids(
         auction_id: int,
         request: Request,
@@ -242,9 +242,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post(
         "/auctions/{auction_id}/bids",
+        tags=["auctions"],
+        summary="Place a bid",
         responses={
             201: {"description": "Accepted - this is now the high bid"},
             200: {"description": "Duplicate request_id - the original accepted outcome"},
+            401: {"description": "Log in to bid (servers with REQUIRE_LOGIN on)"},
+            403: {"description": "Sent from another website"},
+            404: {"description": "No such auction"},
             409: {"description": "Rejected (bid_too_low, auction_closed)"},
             429: {"description": "Too many bids from this address; slow down"},
             503: {"description": "Auction busy - retry with the same request_id"},

@@ -1,43 +1,58 @@
 # Deploying on AWS
 
-Two routes. Route 1 gets a public demo running in about 15 minutes. Route 2
+Two routes. Route 1 gets a public demo running in about 10 minutes. Route 2
 is the production-shaped setup with managed Postgres and more than one instance.
 
-## Route 1: one EC2 instance with Docker Compose
+## Route 1: one EC2 instance, set up by its own boot script
 
-Everything (Postgres and two API instances) runs on one machine. Good for a
-demo; for durable data use RDS (Route 2).
+Everything (Postgres and two API instances) runs on one machine, and the
+machine sets itself up on first boot from
+[`deploy/ec2-user-data.sh`](../deploy/ec2-user-data.sh). No SSH and no manual
+installs. Good for a demo; for durable data use RDS (Route 2).
 
-1. **Launch an instance.** EC2 → Launch instance → *Amazon Linux 2023*, a
-   free-tier eligible type (`t3.micro` / `t2.micro`), and a key pair.
-2. **Security group inbound rules:**
-   - SSH `22` from *My IP* only
-   - Custom TCP `8000-8001` from `0.0.0.0/0` (the two API instances)
+The boot script installs Docker, clones this repository and runs
+`docker compose` with [`deploy/docker-compose.aws.yml`](../deploy/docker-compose.aws.yml).
+That puts instance 1 on port **80** and instance 2 on **8001**, keeps Postgres
+off the network, and turns off the unsafe race-demo endpoint. CI boots exactly
+this stack on every push (the `aws-stack` job).
 
-   Do **not** open `5432`.
-3. **Install Docker and run the stack:**
+### From AWS CloudShell
 
-   ```bash
-   ssh -i your-key.pem ec2-user@<public-ip>
-   sudo dnf install -y docker git
-   sudo systemctl enable --now docker
-   sudo usermod -aG docker ec2-user && newgrp docker
-   sudo mkdir -p /usr/local/lib/docker/cli-plugins
-   sudo curl -SL https://github.com/docker/compose/releases/latest/download/docker-compose-linux-$(uname -m) \
-        -o /usr/local/lib/docker/cli-plugins/docker-compose
-   sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+Open CloudShell from the console's top bar, in the region you want (e.g.
+Mumbai, `ap-south-1`), and run:
 
-   git clone https://github.com/yashrajkanawade357/Real-Time-Bidding-backend.git
-   cd Real-Time-Bidding-backend
-   docker compose up -d --build
-   ```
+```bash
+# Ubuntu 24.04, resolved from Canonical's public parameter (always current)
+AMI=$(aws ssm get-parameters   --names /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id   --query 'Parameters[0].Value' --output text)
 
-4. Open `http://<public-ip>:8000` and `http://<public-ip>:8001` in two tabs.
+# Firewall: the two app ports only. Postgres (5432) and SSH (22) stay closed.
+VPC=$(aws ec2 describe-vpcs --filters Name=is-default,Values=true --query 'Vpcs[0].VpcId' --output text)
+SG=$(aws ec2 create-security-group --group-name bidding-floor   --description "Bidding Floor demo: HTTP only" --vpc-id "$VPC" --query GroupId --output text)
+aws ec2 authorize-security-group-ingress --group-id "$SG" --ip-permissions   'IpProtocol=tcp,FromPort=80,ToPort=80,IpRanges=[{CidrIp=0.0.0.0/0}]'   'IpProtocol=tcp,FromPort=8001,ToPort=8001,IpRanges=[{CidrIp=0.0.0.0/0}]'
 
-Before sharing the URL publicly, set `ENABLE_UNSAFE_DEMO: "false"` in
-`docker-compose.yml` unless you want the race demo reachable. Leave
-`DEMO_RESTOCK: "true"`: it keeps a few lots open, so whoever opens the link
-always finds something live to bid on.
+# Launch with the boot script as user data
+curl -fsSLo user-data.sh   https://raw.githubusercontent.com/yashrajkanawade357/Real-Time-Bidding-backend/main/deploy/ec2-user-data.sh
+ID=$(aws ec2 run-instances --image-id "$AMI" --instance-type t3.micro   --security-group-ids "$SG" --user-data file://user-data.sh   --metadata-options HttpTokens=required   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=bidding-floor}]'   --query 'Instances[0].InstanceId' --output text)
+aws ec2 wait instance-running --instance-ids "$ID"
+aws ec2 describe-instances --instance-ids "$ID"   --query 'Reservations[0].Instances[0].PublicIpAddress' --output text
+```
+
+Give it about five minutes to install Docker and build the image, then open
+`http://<public-ip>` and `http://<public-ip>:8001` in two windows.
+
+Use a free-tier eligible type for your account; list them with
+`aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true --query 'InstanceTypes[].InstanceType'`.
+
+**If the page doesn't load**, read the boot log without SSH:
+`aws ec2 get-console-output --instance-id "$ID" --latest --output text | tail -50`.
+
+**To update** after pushing new code, reboot is not enough. Re-run the boot
+script (it pulls and rebuilds) via *EC2 → Instance → Actions → Monitor and
+troubleshoot → Get system log* to check, or replace the instance.
+
+**To stop paying**: `aws ec2 terminate-instances --instance-ids "$ID"`.
+
+`DEMO_RESTOCK` stays on, so whoever opens the link always finds lots open.
 
 ## Route 2: ECS Fargate + Application Load Balancer + RDS PostgreSQL
 

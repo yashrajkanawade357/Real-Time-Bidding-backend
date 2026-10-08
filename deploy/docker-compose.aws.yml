@@ -1,0 +1,18 @@
+# Overrides for a public server:
+#   docker compose -f docker-compose.yml -f deploy/docker-compose.aws.yml up -d --build
+# Instance 1 answers on port 80, instance 2 stays on 8001 (to show two
+# instances sharing live updates), the database is not reachable from outside,
+# and the deliberately unsafe race-demo endpoint is off.
+services:
+  db:
+    ports: !reset []
+
+  api:
+    ports: !override
+      - "80:8000"
+    environment:
+      ENABLE_UNSAFE_DEMO: "false"
+
+  api-2:
+    environment:
+      ENABLE_UNSAFE_DEMO: "false"

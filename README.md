@@ -8,6 +8,8 @@ every dropped connection, and after a full restart.
 
 **Python 3.13 · FastAPI · WebSockets · PostgreSQL row locks and LISTEN/NOTIFY**
 
+**Live: [d3n4nep4m9xruh.cloudfront.net](https://d3n4nep4m9xruh.cloudfront.net)**. Running on AWS: EC2 behind CloudFront, deployed by one script. Open [the floor](https://d3n4nep4m9xruh.cloudfront.net/floor) in two windows and bid against yourself.
+
 <img src="docs/img/hero.png" alt="Lot page for an Omega Seamaster 300. The bid panel tells the viewer they have been outbid by arjun.m and offers a one-click bid at the next increment. The bid history, read from the database, lists six bids.">
 
 ## Two bidders, one lot
@@ -91,8 +93,10 @@ same deadline.
 
 <img src="docs/img/network-panel.png" alt="The page with the Network and sync panel open. It lists every message on the socket: a dropped connection, a reconnect with a fresh snapshot, a bid queued while offline, and the server rejecting it after reconnect.">
 
-The **Network & sync** panel at the bottom of the page shows every message
-crossing the socket, with the version each one carries. It has three drills:
+Open the floor with `?debug` (`/floor?debug`) and a **Network & sync** panel
+appears at the bottom. It shows every message crossing the socket, with the
+version each one carries and the server instance you landed on. It has three
+drills:
 
 - **Drop connection** kills the socket the way a network blip would. The client reconnects with exponential backoff and jitter, and resyncs from a database snapshot.
 - **Go offline** keeps it down. Bids wait in an outbox and are resent with their original `request_id` on reconnect, so the server can de-duplicate them.
@@ -100,6 +104,44 @@ crossing the socket, with the version each one carries. It has three drills:
 
 In the screenshot, the tab went offline, queued ₹37,000, and on reconnect the
 server rejected it: sam had bid ₹38,000 in the meantime.
+
+## Landing page and admin portal
+
+<img src="docs/img/landing.png" alt="Landing page: headline, the lots open right now with their current bids, and links into the bidding floor.">
+
+`/` introduces the project with the lots that are open right now, read live
+from the API, the measured race results and the diagrams. The floor itself is
+at `/floor`.
+
+<img src="docs/img/admin.png" alt="Admin portal: totals, a lots table with Close now and Remove actions, a form to open a lot, live instances with their socket counts, a live feed of every event across all lots, and the full bid log including rejected bids.">
+
+`/admin` unlocks with an **access key** that the server generates for itself
+(never stored in the code). From there the auctioneer can:
+
+- **Run lots**: open them, close one early (the current leader wins), or remove one from the floor.
+- **Watch every lot live**: a feed of every committed change, as Postgres announces it.
+- **See which instances are up**, and how many sockets each one holds. This shows nginx spreading visitors across both.
+- **Read the full bid log**, including rejected bids with their reasons and request ids.
+
+On the public server, visitors can only bid; opening lots is admin-only.
+
+## Security
+
+The live server is reachable only over HTTPS through CloudFront, and the
+instance accepts traffic from CloudFront alone. Nothing else is exposed:
+Postgres, SSH and the API containers can't be reached from the internet.
+
+| Area | Controls |
+|---|---|
+| **Admin** | Access key compared in constant time; locked out after 10 wrong tries |
+| **Abuse** | Per-address rate limits for bids, sockets and new lots; body and message size caps |
+| **Browser** | A strict Content-Security-Policy, with no inline scripts at all |
+| **Secrets** | Generated on the server; none in the repository |
+| **Dependencies** | Scanned for known vulnerabilities on every push |
+
+**[docs/SECURITY.md](docs/SECURITY.md)** has the threat model, every control,
+and the test that proves it. It also lists the risks accepted for a demo, with
+what production would use instead.
 
 ## Run it
 
@@ -109,11 +151,12 @@ server rejected it: sam had bid ₹38,000 in the meantime.
 docker compose up --build
 ```
 
-This starts Postgres and **two** API instances: <http://localhost:8000> and
-<http://localhost:8001>. Open one in each window and bid. Updates cross between
-the instances through Postgres, with no shared memory and no sticky sessions.
-A few lots open automatically (`DEMO_RESTOCK`), so there is something to bid
-on straight away.
+This starts Postgres and **two** API instances. Open
+<http://localhost:8000/floor> in one window and <http://localhost:8001/floor>
+in another, then bid. Updates cross between the instances through Postgres,
+with no shared memory and no sticky sessions. A few lots open automatically
+(`DEMO_RESTOCK`), so there's something to bid on straight away. To use
+`/admin`, put `ADMIN_KEY=` and 24 or more random characters in `.env` first.
 
 **Without Docker:** you need Python 3.11+ and PostgreSQL 14+.
 
@@ -147,7 +190,7 @@ python scripts/reconnect_demo.py       # narrated: drop, stale offline bid, retr
 pytest
 ```
 
-27 tests against a real Postgres (`TEST_DATABASE_URL`). Locking behaviour
+46 tests against a real Postgres (`TEST_DATABASE_URL`). Locking behaviour
 can't be mocked. They cover:
 
 - the bid rules;
@@ -155,9 +198,13 @@ can't be mocked. They cover:
 - equal simultaneous bids;
 - 25 concurrent retries of one request;
 - closing exactly once while several closers race;
-- end to end over real sockets: live pushes, reconnects, a full server restart, two instances sharing events, and the server's own event feed dropping mid-auction.
+- end to end over real sockets: live pushes, reconnects, a full server restart, two instances sharing events, and the server's own event feed dropping mid-auction;
+- every security control: headers, size caps, rate limits, client-address parsing, admin key checks and lockout, and private request ids;
+- the admin portal end to end.
 
-CI also starts a live server and runs both demo scripts against it.
+CI also scans dependencies with `pip-audit`, runs both demo scripts against a
+live server, and boots the production stack (nginx in front of two instances)
+to check load balancing, closed ports and the locked-down endpoints.
 
 ## API
 
@@ -168,8 +215,11 @@ CI also starts a live server and runs both demo scripts against it.
 | `GET` | `/auctions/{id}` | Snapshot: `{auction, bids, server_time}` |
 | `GET` | `/auctions/{id}/bids` | History, newest first (`?limit=`, `?include_rejected=true`) |
 | `POST` | `/auctions/{id}/bids` | `{bidder, amount, request_id?}` → `201` accepted · `409` rejected (`bid_too_low`, `auction_closed`) · `200` replay of an accepted `request_id` · `503` busy, retry |
-| `GET` | `/health` | Database and event-listener status |
+| `GET` | `/health` | Database and event-listener status, and which instance answered |
+| `GET` | `/config` | Whether visitors may open lots here |
 | `WS` | `/ws/auctions/{id}?bidder=` | Live channel. Leave out `bidder` to watch only |
+| `*` | `/admin/api/…` | Admin: `overview`, `lots`, `lots/{id}/close`, `lots/{id}/remove`, `bids`. Requires `Authorization: Bearer <key>` |
+| `WS` | `/ws/admin` | Every event for every lot. First message: `{"type": "auth", "key": "…"}` |
 
 On the socket the server sends `snapshot`, `bid_accepted`, `auction_closed`,
 and `bid_result` (only to the bidder). The client sends
@@ -187,26 +237,35 @@ app/
   auctions.py     queries, snapshots, serialisation
   events.py       the LISTEN connection, with reconnect and resync
   hub.py          sockets per lot, bounded send queues
-  realtime.py     the WebSocket protocol
+  realtime.py     the WebSocket protocol, including the admin feed
+  admin.py        the admin API behind the access key
+  security.py     security headers, size caps, client address, rate limiter
   demo.py         keeps a public demo stocked with open lots
   main.py         REST API, wiring, startup and shutdown
   db.py           pool and migrations (advisory-locked, safe with many instances)
 migrations/       SQL schema
-static/           the browser client: plain HTML, CSS and JS, no build step
+static/           landing, floor and admin pages: plain HTML, CSS and JS, no build step
+deploy/           EC2 boot scripts, nginx, the AWS compose overrides, aws-launch.sh
 scripts/          race_demo.py · reconnect_demo.py · dev_db.py
 tests/            pytest suite against real Postgres
-docs/             DESIGN.md · DEPLOY_AWS.md
+docs/             DESIGN.md · SECURITY.md · DEPLOY_AWS.md
 ```
 
 ## Deploying
 
-[docs/DEPLOY_AWS.md](docs/DEPLOY_AWS.md) covers a single EC2 instance with
-Docker Compose, and ECS Fargate behind an Application Load Balancer with RDS
-PostgreSQL. It includes the WebSocket specifics: ALB idle timeout versus
-keep-alive pings, and why sticky sessions aren't needed.
+The live demo is deployed from AWS CloudShell with one script:
+
+```bash
+bash deploy/aws-launch.sh launch      # firewall, EC2 instance, CloudFront; prints the https:// URL
+bash deploy/aws-launch.sh update      # after a push: the instance pulls and rebuilds, same URL
+```
+
+The instance sets itself up on first boot, with no SSH. [docs/DEPLOY_AWS.md](docs/DEPLOY_AWS.md)
+walks through it, along with the production-shaped alternative: ECS Fargate
+behind an Application Load Balancer, with RDS.
 
 ## Known limits
 
-- **No authentication.** The bidder name is self-declared. In production it would come from a verified token, never from the client.
+- **Bidders aren't authenticated.** The bidder name is self-declared. In production it would come from a verified token, never from the client. [SECURITY.md](docs/SECURITY.md) lists this and the other accepted risks, with production fixes.
 - **One hot lot is bounded by one row lock.** That is inherent, because one lot's bids must be strictly ordered. On a laptop that is roughly 600 to 750 bids a second on a single lot. Different lots don't block each other.
-- **Not built:** proxy (maximum) bids, reserve prices, anti-sniping extensions, rate limiting.
+- **Not built:** proxy (maximum) bids, reserve prices, anti-sniping extensions.

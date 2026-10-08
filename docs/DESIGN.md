@@ -190,9 +190,15 @@ the same ids, after every reconnect.
 
 ## How this would map onto AWS
 
-**As built** (container + managed Postgres): ECS Fargate behind an
+**As deployed** (the live demo): CloudFront terminates HTTPS and forwards to
+one EC2 instance. Its firewall accepts only CloudFront's origin-facing
+addresses. On the instance, nginx spreads requests and WebSockets across two
+API containers, with no sticky sessions, and PostgreSQL runs alongside. One
+script in CloudShell builds the whole thing. See [DEPLOY_AWS.md](DEPLOY_AWS.md).
+
+**Production-shaped** (containers + managed Postgres): ECS Fargate behind an
 Application Load Balancer, with RDS for PostgreSQL. The ALB supports
-WebSockets natively and needs no stickiness. See [DEPLOY_AWS.md](DEPLOY_AWS.md).
+WebSockets natively and needs no stickiness either.
 
 **Fully serverless equivalent** (not built; how the same guarantees translate):
 

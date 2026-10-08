@@ -1,0 +1,43 @@
+# Local stack: Postgres + two independent API instances on the same database.
+# Open http://localhost:8000 in one tab and http://localhost:8001 in another -
+# a bid placed through either shows up live on both.
+
+x-api: &api
+  build: .
+  environment:
+    DATABASE_URL: postgresql://postgres:postgres@db:5432/bidding
+    ENABLE_UNSAFE_DEMO: "true"   # demo only - see .env.example
+  depends_on:
+    db:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: bidding
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d bidding"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  api:
+    <<: *api
+    ports:
+      - "8000:8000"
+
+  api-2:
+    <<: *api
+    ports:
+      - "8001:8000"
+
+volumes:
+  pgdata:

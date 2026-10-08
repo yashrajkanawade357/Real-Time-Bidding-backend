@@ -16,41 +16,40 @@ That puts instance 1 on port **80** and instance 2 on **8001**, keeps Postgres
 off the network, and turns off the unsafe race-demo endpoint. CI boots exactly
 this stack on every push (the `aws-stack` job).
 
-### From AWS CloudShell
+### From AWS CloudShell: one script
 
-Open CloudShell from the console's top bar, in the region you want (e.g.
-Mumbai, `ap-south-1`), and run:
+[`deploy/aws-launch.sh`](../deploy/aws-launch.sh) does all of it. Open
+**CloudShell** from the console (it is already signed in, in the console's
+region) and run:
 
 ```bash
-# Ubuntu 24.04, resolved from Canonical's public parameter (always current)
-AMI=$(aws ssm get-parameters   --names /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id   --query 'Parameters[0].Value' --output text)
-
-# Firewall: the two app ports only. Postgres (5432) and SSH (22) stay closed.
-VPC=$(aws ec2 describe-vpcs --filters Name=is-default,Values=true --query 'Vpcs[0].VpcId' --output text)
-SG=$(aws ec2 create-security-group --group-name bidding-floor   --description "Bidding Floor demo: HTTP only" --vpc-id "$VPC" --query GroupId --output text)
-aws ec2 authorize-security-group-ingress --group-id "$SG" --ip-permissions   'IpProtocol=tcp,FromPort=80,ToPort=80,IpRanges=[{CidrIp=0.0.0.0/0}]'   'IpProtocol=tcp,FromPort=8001,ToPort=8001,IpRanges=[{CidrIp=0.0.0.0/0}]'
-
-# Launch with the boot script as user data
-curl -fsSLo user-data.sh   https://raw.githubusercontent.com/yashrajkanawade357/Real-Time-Bidding-backend/main/deploy/ec2-user-data.sh
-ID=$(aws ec2 run-instances --image-id "$AMI" --instance-type t3.micro   --security-group-ids "$SG" --user-data file://user-data.sh   --metadata-options HttpTokens=required   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=bidding-floor}]'   --query 'Instances[0].InstanceId' --output text)
-aws ec2 wait instance-running --instance-ids "$ID"
-aws ec2 describe-instances --instance-ids "$ID"   --query 'Reservations[0].Instances[0].PublicIpAddress' --output text
+curl -fsSLO https://raw.githubusercontent.com/yashrajkanawade357/Real-Time-Bidding-backend/main/deploy/aws-launch.sh
+bash aws-launch.sh check     # read-only: region, free-tier size, image, firewall plan
+bash aws-launch.sh launch    # opens ports 80 and 8001, starts the instance, prints the URL
 ```
 
-Give it about five minutes to install Docker and build the image, then open
-`http://<public-ip>` and `http://<public-ip>:8001` in two windows.
+`launch` picks the first **free-tier eligible** size your account allows
+(t3.micro if available), resolves the current Ubuntu 24.04 image from
+Canonical's public parameter, creates a security group with only ports 80 and
+8001 open (Postgres and SSH stay closed), and starts the instance with
+`ec2-user-data.sh` as its user data. Give it about five minutes to install
+Docker and build, then open `http://<public-ip>` and `http://<public-ip>:8001`
+in two windows.
 
-Use a free-tier eligible type for your account; list them with
-`aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true --query 'InstanceTypes[].InstanceType'`.
+```bash
+bash aws-launch.sh status    # state, URL, health check, end of the boot log (no SSH needed)
+bash aws-launch.sh destroy   # terminate the instance when you're done
+```
 
-**If the page doesn't load**, read the boot log without SSH:
-`aws ec2 get-console-output --instance-id "$ID" --latest --output text | tail -50`.
+**Accounts from AWS's new sign-up ("projects")** can only run EC2 in the
+region chosen for the project; other regions are denied by an AWS-managed
+service control policy. CloudShell opens in the console's region, which is the
+project's region, so the script works there as-is. The console URL shows it,
+e.g. `...console.aws.amazon.com/console/home?region=ap-southeast-2`.
 
-**To ship new code**: user data only runs on an instance's first boot, so
-launch a fresh instance with the same `run-instances` command and terminate the
-old one. It takes about five minutes, and the data in this demo is disposable.
-
-**To stop paying**: `aws ec2 terminate-instances --instance-ids "$ID"`.
+**To ship new code**: user data only runs on an instance's first boot, so run
+`destroy`, then `launch` again. It takes about five minutes, and the data in
+this demo is disposable.
 
 `DEMO_RESTOCK` stays on, so whoever opens the link always finds lots open.
 

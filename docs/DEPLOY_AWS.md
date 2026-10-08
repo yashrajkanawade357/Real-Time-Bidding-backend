@@ -46,9 +46,9 @@ Use a free-tier eligible type for your account; list them with
 **If the page doesn't load**, read the boot log without SSH:
 `aws ec2 get-console-output --instance-id "$ID" --latest --output text | tail -50`.
 
-**To update** after pushing new code, reboot is not enough. Re-run the boot
-script (it pulls and rebuilds) via *EC2 → Instance → Actions → Monitor and
-troubleshoot → Get system log* to check, or replace the instance.
+**To ship new code**: user data only runs on an instance's first boot, so
+launch a fresh instance with the same `run-instances` command and terminate the
+old one. It takes about five minutes, and the data in this demo is disposable.
 
 **To stop paying**: `aws ec2 terminate-instances --instance-ids "$ID"`.
 

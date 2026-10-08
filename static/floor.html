@@ -25,10 +25,12 @@
     <button class="conn" id="conn" type="button" data-state="connecting" title="Show the network panel">
       <span class="conn-dot"></span><span id="connLabel">Connecting</span><span class="conn-ms" id="connMs"></span>
     </button>
-    <label class="identity" title="Your bidder name">
+    <label class="identity" id="identity" title="Your bidder name">
       <span class="avatar" id="meAvatar" aria-hidden="true"></span>
       <input id="bidder" maxlength="40" autocomplete="nickname" spellcheck="false" aria-label="Your bidder name" placeholder="Your name">
     </label>
+    <button class="btn btn-quiet" id="logoutBtn" type="button" hidden>Log out</button>
+    <a class="btn btn-ink" id="loginLink" href="/login" hidden>Log in to bid</a>
   </div>
 </header>
 

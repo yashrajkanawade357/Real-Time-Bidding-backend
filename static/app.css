@@ -124,6 +124,9 @@ button { cursor: pointer; }
   font-weight: 500;
 }
 .identity input:focus { outline: none; }
+.identity input[readonly] { cursor: default; }
+a.btn { text-decoration: none; }
+a.btn-ink { color: var(--paper); }
 .identity:focus-within { border-color: var(--focus); }
 
 /* ---------- avatars & chips ---------- */

@@ -1,0 +1,33 @@
+/* Login / sign-up page. Shares tokens and components with app.css. */
+
+.btn { text-decoration: none; color: inherit; }
+.btn-ink { color: var(--paper); }
+
+.auth { display: grid; justify-items: center; align-content: start; gap: 18px; min-height: calc(100vh - 56px); padding: 9vh 16px 48px; }
+.auth-card {
+  width: min(440px, 100%); display: grid; gap: 16px; padding: 32px 30px 26px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow);
+}
+.auth-card h1 { margin: 0; font: 400 40px/1.02 var(--serif); letter-spacing: -.01em; }
+.auth-lede { margin: -6px 0 2px; color: var(--muted); }
+
+.auth-tabs { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; border-radius: 9px; background: var(--sunken); }
+.auth-tabs button { border: 0; background: transparent; padding: 7px 0; border-radius: 7px; font-size: 13.5px; color: var(--ink-2); }
+.auth-tabs button[aria-selected="true"] { background: var(--surface); color: var(--ink); font-weight: 500; box-shadow: 0 1px 2px rgb(0 0 0 / 12%); }
+
+.auth-form { display: grid; gap: 14px; }
+.auth-form .field input { padding: 10px 12px; font-size: 15px; }
+.hint { font-size: 12px; color: var(--muted); }
+.auth-submit { height: 44px; font-size: 15px; margin-top: 4px; }
+.auth-error { min-height: 18px; margin: -4px 0 0; font-size: 13.5px; color: var(--danger); }
+
+.signed-in p { margin: 0 0 12px; }
+.signed-in-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.auth-note { width: min(440px, 100%); margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--muted); }
+.auth-note a { color: var(--ink-2); }
+
+@media (max-width: 480px) {
+  .auth { padding-top: 32px; }
+  .auth-card { padding: 24px 20px 20px; }
+}

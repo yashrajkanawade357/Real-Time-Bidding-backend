@@ -101,6 +101,17 @@
     });
   }
 
+  // Top bar: "Log in", or who you're signed in as.
+  fetch("/auth/me").then((r) => r.json()).then((me) => {
+    const link = document.getElementById("accountLink");
+    if (me.user) {
+      link.textContent = `Signed in as ${me.user.display_name}`;
+      link.href = "/login";
+    } else if (!me.require_login) {
+      link.hidden = true;  // nothing to log in for on this server
+    }
+  }).catch(() => {});
+
   load();
   loadJudgeKey();
   setInterval(load, 5000);

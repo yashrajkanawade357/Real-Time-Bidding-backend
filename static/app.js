@@ -89,6 +89,9 @@
     outbidBy: null,
     instance: null,    // which API instance our socket landed on
     publicLots: true,  // may visitors open lots on this server?
+    requireLogin: false,  // does bidding need an account here?
+    user: null,           // the signed-in account, if any
+    softClose: 0,         // anti-sniping window, in seconds
   };
   // The network panel is a demo/debugging tool: shown only with ?debug in the URL.
   const DEBUG = new URLSearchParams(location.search).has("debug");
@@ -107,7 +110,7 @@
     clearTimeout(S.retryTimer);
     if (S.lotId == null || S.offline) return;
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    const query = S.me ? `?bidder=${encodeURIComponent(S.me)}` : "";
+    const query = !S.requireLogin && S.me ? `?bidder=${encodeURIComponent(S.me)}` : "";
     const sock = new WebSocket(`${proto}://${location.host}/ws/auctions/${S.lotId}${query}`);
     S.ws = sock;
     setConn("connecting");
@@ -189,6 +192,10 @@
         }
         wire("in", msg.type, msg.bid ? `${msg.bid.bidder} ${inr(msg.bid.amount)}` : (a.leader ? `sold to ${a.leader}` : "passed"), a.version);
         noteLeader(a);
+        if (a.extensions > S.auction.extensions) {
+          wire("in", "extended", `late bid: now ends ${clockTime(new Date(a.ends_at))}`, a.version);
+          toast(`Late bid! Anti-sniping pushed the end back to ${clockTime(new Date(a.ends_at))}.`);
+        }
         S.auction = a;
         if (msg.bid) S.bids = [msg.bid, ...S.bids].slice(0, 50);
         render(msg.bid && msg.bid.id);
@@ -255,6 +262,10 @@
 
   // ---------------------------------------------------------------- bidding
   function placeBid(amount) {
+    if (S.requireLogin && !S.user) {
+      location.href = loginUrl();
+      return;
+    }
     if (!S.me) {
       toast("Add your name at the top right to bid.", "danger");
       $("bidder").focus();
@@ -344,8 +355,9 @@
 
     // controls
     const open = !closed && msLeft(a) > 0;
+    const signedOut = S.requireLogin && !S.user;
     $("bidBtn").disabled = !open;
-    $("bidBtn").textContent = open ? `Bid ${inr(a.min_next_bid)}` : "Bidding closed";
+    $("bidBtn").textContent = !open ? "Bidding closed" : signedOut ? "Log in to bid" : `Bid ${inr(a.min_next_bid)}`;
     $("jumps").replaceChildren(...[1, 4, 10].map((steps) => {
       const amount = a.min_next_bid + steps * a.min_increment;
       const b = el("button", "btn", inr(amount));
@@ -356,8 +368,8 @@
       return b;
     }));
     $("customAmount").placeholder = a.min_next_bid.toLocaleString("en-IN");
-    $("jumps").hidden = closed;
-    $("customForm").hidden = closed;
+    $("jumps").hidden = closed || signedOut;
+    $("customForm").hidden = closed || signedOut;
 
     // history
     const rows = S.bids.map((bid, i) => {
@@ -469,7 +481,8 @@
     if (a) {
       const ms = msLeft(a);
       const closed = a.status === "closed";
-      $("clockLabel").textContent = closed ? "Closed at" : ms <= 0 ? "Closing" : ms < 60000 ? "Closing soon" : "Closes in";
+      const ext = a.extensions ? ` · extended ×${a.extensions}` : "";
+      $("clockLabel").textContent = (closed ? "Closed at" : ms <= 0 ? "Closing" : ms < 60000 ? "Closing soon" : "Closes in") + ext;
       $("clock").textContent = closed ? clockTime(new Date(a.closed_at || a.ends_at)) : countdown(ms);
       $("bidbox").dataset.urgency = !closed && ms < 60000 ? "high" : "";
       const span = Date.parse(a.ends_at) - Date.parse(a.created_at);
@@ -532,8 +545,25 @@
     const a = $("meAvatar");
     a.textContent = initials(S.me || "?");
     a.dataset.hue = hueOf(S.me || "?");
+    if (S.requireLogin) {
+      // The name comes from the account; it isn't editable here.
+      $("bidder").readOnly = true;
+      $("identity").hidden = !S.user;
+      $("identity").title = S.user ? `Signed in as ${S.user.email}` : "";
+      $("logoutBtn").hidden = !S.user;
+      $("loginLink").hidden = !!S.user;
+      $("loginLink").href = loginUrl();
+    }
   }
+  function loginUrl() {
+    return "/login?next=" + encodeURIComponent(location.pathname + location.search + location.hash);
+  }
+  $("logoutBtn").addEventListener("click", async () => {
+    await fetch("/auth/logout", { method: "POST" });
+    location.reload();
+  });
   $("bidder").addEventListener("change", () => {
+    if (S.requireLogin) return;
     S.me = $("bidder").value.trim().slice(0, 40);
     store.set("bidder", S.me);
     S.outbidBy = null;
@@ -637,9 +667,17 @@
   // ------------------------------------------------------------------ boot
   async function loadConfig() {
     try {
-      const config = await (await fetch("/config")).json();
+      const [config, me] = await Promise.all([
+        fetch("/config").then((r) => r.json()),
+        fetch("/auth/me").then((r) => r.json()),
+      ]);
       S.publicLots = config.public_lot_creation;
+      S.requireLogin = config.require_login;
+      S.softClose = config.soft_close_seconds || 0;
+      S.user = me.user;
+      if (S.requireLogin) S.me = S.user ? S.user.display_name : "";
     } catch { /* keep defaults */ }
+    renderMe();
     $("newLotBtn").hidden = !S.publicLots;
     $("emptyNewLot").hidden = !S.publicLots;
     if (!S.publicLots) $("emptyText").textContent = "No lots are open right now. New lots are opened by the auctioneer.";
@@ -649,7 +687,9 @@
   if (DEBUG) setDevtools(store.get("devtools") === "1");
   else { $("devtools").hidden = true; document.body.classList.add("no-devtools"); }
   renderConn();
-  loadConfig();
-  loadLots();
-  setInterval(loadLots, 5000);
+  // Know who we are before opening a socket, so it connects as the right person.
+  loadConfig().then(() => {
+    loadLots();
+    setInterval(loadLots, 5000);
+  });
 })();

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Log in · Bidding Floor</title>
+<meta name="description" content="Log in or create an account to bid on the Bidding Floor.">
+<meta name="theme-color" content="#f6f4ef">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Instrument+Serif&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/login.css">
+<script src="/static/login.js" defer></script>
+</head>
+<body class="no-devtools">
+
+<header class="topbar">
+  <a class="brand" href="/">
+    <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#7d1f1b"/><path d="M9 8.5h9.2l5.3 5.3v9.7H9z" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/><circle cx="18" cy="13.5" r="1.6" fill="#fff"/><path d="M12.5 18h7M12.5 21h4.5" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/></svg>
+    <span class="brand-name">Bidding Floor</span>
+  </a>
+  <div class="topbar-right">
+    <a class="btn btn-quiet" href="/floor">Watch the floor</a>
+  </div>
+</header>
+
+<main class="auth">
+  <section class="auth-card" aria-labelledby="authTitle">
+    <h1 id="authTitle">Log in to bid</h1>
+    <p class="auth-lede" id="authLede">Watching is open to everyone. To place bids, use your account.</p>
+
+    <div class="auth-tabs" role="tablist" aria-label="Log in or sign up">
+      <button type="button" role="tab" id="tabLogin" aria-selected="true" aria-controls="loginForm">Log in</button>
+      <button type="button" role="tab" id="tabSignup" aria-selected="false" aria-controls="signupForm">Create account</button>
+    </div>
+
+    <form class="auth-form" id="loginForm" role="tabpanel" aria-labelledby="tabLogin" novalidate>
+      <label class="field"><span class="label">Email</span>
+        <input name="email" type="email" autocomplete="email" required maxlength="254" inputmode="email"></label>
+      <label class="field"><span class="label">Password</span>
+        <input name="password" type="password" autocomplete="current-password" required maxlength="128"></label>
+      <button class="btn btn-ink auth-submit" type="submit">Log in</button>
+    </form>
+
+    <form class="auth-form" id="signupForm" role="tabpanel" aria-labelledby="tabSignup" hidden novalidate>
+      <label class="field"><span class="label">Email</span>
+        <input name="email" type="email" autocomplete="email" required maxlength="254" inputmode="email"></label>
+      <label class="field"><span class="label">Display name</span>
+        <input name="display_name" autocomplete="nickname" required minlength="3" maxlength="24" spellcheck="false" pattern="[A-Za-z0-9][A-Za-z0-9._\-]{2,23}">
+        <span class="hint">What other bidders see, e.g. <i>asha.k</i>. Your email is never shown.</span></label>
+      <label class="field"><span class="label">Password</span>
+        <input name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="128">
+        <span class="hint">At least 8 characters.</span></label>
+      <button class="btn btn-ink auth-submit" type="submit">Create account</button>
+    </form>
+
+    <div class="signed-in" id="signedIn" hidden>
+      <p>You're signed in as <b id="signedInName"></b>.</p>
+      <div class="signed-in-actions">
+        <a class="btn btn-ink" id="continueLink" href="/floor">Go to the floor</a>
+        <button class="btn" type="button" id="logoutBtn">Log out</button>
+      </div>
+    </div>
+
+    <p class="auth-error" id="authError" role="alert"></p>
+  </section>
+
+  <p class="auth-note">Passwords are stored only as salted scrypt hashes, and your session lives in a cookie that page scripts can't read. <a href="https://github.com/yashrajkanawade357/Real-Time-Bidding-backend/blob/main/docs/SECURITY.md" rel="noopener">How accounts are secured</a></p>
+</main>
+</body>
+</html>

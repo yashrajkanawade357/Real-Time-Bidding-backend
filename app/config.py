@@ -40,6 +40,8 @@ class Settings:
     enable_unsafe_demo: bool = False
     unsafe_delay_ms: int = 20
     cors_origins: tuple[str, ...] = ("*",)
+    demo_restock: bool = False
+    demo_open_lots: int = 4
 
 
 def load_settings() -> Settings:
@@ -57,4 +59,6 @@ def load_settings() -> Settings:
         cors_origins=tuple(
             o.strip() for o in os.environ.get("CORS_ORIGINS", "*").split(",") if o.strip()
         ),
+        demo_restock=_bool("DEMO_RESTOCK", False),
+        demo_open_lots=_int("DEMO_OPEN_LOTS", 4),
     )

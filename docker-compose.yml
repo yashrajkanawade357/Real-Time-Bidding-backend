@@ -7,6 +7,7 @@ x-api: &api
   environment:
     DATABASE_URL: postgresql://postgres:postgres@db:5432/bidding
     ENABLE_UNSAFE_DEMO: "true"   # demo only - see .env.example
+    DEMO_RESTOCK: "true"         # keep a few lots open so there's always something to bid on
   depends_on:
     db:
       condition: service_healthy

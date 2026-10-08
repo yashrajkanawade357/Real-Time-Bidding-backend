@@ -14,9 +14,10 @@ from collections.abc import AsyncIterator
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from app import auctions, bidding, db
+from app import auctions, bidding, db, demo
 from app.config import MAX_AMOUNT, ROOT, Settings, load_settings
 from app.events import EventListener
 from app.hub import Hub
@@ -79,6 +80,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             asyncio.create_task(app.state.listener.run()),
             asyncio.create_task(bidding.closer_loop(pool, settings.closer_interval)),
         ]
+        if settings.demo_restock:
+            background.append(asyncio.create_task(demo.restock_loop(pool, settings.demo_open_lots)))
         try:
             yield
         finally:
@@ -104,6 +107,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(realtime_router)
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
     @app.get("/", include_in_schema=False)
     async def index() -> FileResponse:

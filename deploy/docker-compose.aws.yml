@@ -1,18 +1,40 @@
-# Overrides for a public server:
+# Overrides for the public server:
 #   docker compose -f docker-compose.yml -f deploy/docker-compose.aws.yml up -d --build
-# Instance 1 answers on port 80, instance 2 stays on 8001 (to show two
-# instances sharing live updates), the database is not reachable from outside,
-# and the deliberately unsafe race-demo endpoint is off.
+#
+# nginx on port 80 spreads visitors across both API instances. Nothing else is
+# published: the API containers and Postgres are reachable only inside Docker's
+# network. Secrets (POSTGRES_PASSWORD, ADMIN_KEY) come from the root-only .env
+# that deploy/on-boot.sh generates on the server.
+
+x-public: &public
+  ENABLE_UNSAFE_DEMO: "false"
+  PUBLIC_LOT_CREATION: "${PUBLIC_LOT_CREATION:-false}"
+  # CloudFront and nginx each append to X-Forwarded-For.
+  TRUSTED_PROXY_HOPS: "${TRUSTED_PROXY_HOPS:-2}"
+
 services:
   db:
     ports: !reset []
 
   api:
-    ports: !override
-      - "80:8000"
+    ports: !reset []
     environment:
-      ENABLE_UNSAFE_DEMO: "false"
+      <<: *public
+      INSTANCE_NAME: instance-1
 
   api-2:
+    ports: !reset []
     environment:
-      ENABLE_UNSAFE_DEMO: "false"
+      <<: *public
+      INSTANCE_NAME: instance-2
+
+  lb:
+    image: nginx:1.27-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+      - api-2
+    restart: unless-stopped

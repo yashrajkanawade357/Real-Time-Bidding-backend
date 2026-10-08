@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import random
 import ssl
 import sys
@@ -21,6 +22,19 @@ from urllib.parse import urlsplit
 import httpx
 
 OK, BAD = "[ ok ]", "[FAIL]"
+
+
+async def open_lot(http: httpx.AsyncClient, admin_key: str | None, **lot) -> dict:
+    """Open a lot: through the admin API when a key is given (servers where
+    visitors can't open lots), otherwise through the public endpoint."""
+    if admin_key:
+        r = await http.post("/admin/api/lots", json=lot, headers={"Authorization": f"Bearer {admin_key}"})
+    else:
+        r = await http.post("/auctions", json=lot)
+    if r.status_code == 403:
+        raise SystemExit("This server doesn't let visitors open lots. Pass --admin-key (or set BIDDING_ADMIN_KEY).")
+    r.raise_for_status()
+    return r.json()
 
 
 class Bidder:
@@ -50,12 +64,10 @@ class Bidder:
         return int(raw.split(b" ", 2)[1])  # "HTTP/1.1 201 Created" -> 201
 
 
-async def run_round(http: httpx.AsyncClient, *, n: int, unsafe: bool, seed: int) -> bool:
+async def run_round(http: httpx.AsyncClient, *, n: int, unsafe: bool, seed: int, admin_key: str | None) -> bool:
     label = "UNSAFE  read -> check -> write, no lock" if unsafe else "SAFE    row lock + one transaction per bid"
-    auction = (await http.post("/auctions", json={
-        "title": f"Race demo ({'unsafe' if unsafe else 'safe'})",
-        "starting_price": 100, "min_increment": 1, "duration_seconds": 600,
-    })).json()
+    auction = await open_lot(http, admin_key, title=f"Race demo ({'unsafe' if unsafe else 'safe'})",
+                             starting_price=100, min_increment=1, duration_seconds=600)
     aid = auction["id"]
 
     amounts = list(range(100, 100 + n))
@@ -120,6 +132,8 @@ async def main() -> int:
     parser.add_argument("--bids", type=int, default=300)
     parser.add_argument("--unsafe", action="store_true", help="also run the lock-free path")
     parser.add_argument("--seed", type=int, default=7)
+    parser.add_argument("--admin-key", default=os.environ.get("BIDDING_ADMIN_KEY"),
+                        help="open the lots through the admin API (default: $BIDDING_ADMIN_KEY)")
     args = parser.parse_args()
 
     async with httpx.AsyncClient(base_url=args.base_url, timeout=30) as http:
@@ -128,9 +142,9 @@ async def main() -> int:
         except httpx.HTTPError:
             print(f"No server at {args.base_url}. Start it with: uvicorn app.main:app")
             return 2
-        safe_ok = await run_round(http, n=args.bids, unsafe=False, seed=args.seed)
+        safe_ok = await run_round(http, n=args.bids, unsafe=False, seed=args.seed, admin_key=args.admin_key)
         if args.unsafe:
-            await run_round(http, n=args.bids, unsafe=True, seed=args.seed)
+            await run_round(http, n=args.bids, unsafe=True, seed=args.seed, admin_key=args.admin_key)
             print(f"\nSame {args.bids} bids, same shuffle. The only difference is the lock.")
     return 0 if safe_ok else 1
 

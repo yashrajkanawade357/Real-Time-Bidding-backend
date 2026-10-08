@@ -12,10 +12,24 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 
 import httpx
 from websockets.asyncio.client import connect
+
+
+async def open_lot(http: httpx.AsyncClient, admin_key: str | None, **lot) -> dict:
+    """Open a lot: through the admin API when a key is given (servers where
+    visitors can't open lots), otherwise through the public endpoint."""
+    if admin_key:
+        r = await http.post("/admin/api/lots", json=lot, headers={"Authorization": f"Bearer {admin_key}"})
+    else:
+        r = await http.post("/auctions", json=lot)
+    if r.status_code == 403:
+        raise SystemExit("This server doesn't let visitors open lots. Pass --admin-key (or set BIDDING_ADMIN_KEY).")
+    r.raise_for_status()
+    return r.json()
 
 
 def say(step: str, text: str) -> None:
@@ -37,7 +51,10 @@ async def recv(ws, *kinds: str) -> dict:
 async def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
-    base = parser.parse_args().base_url.rstrip("/")
+    parser.add_argument("--admin-key", default=os.environ.get("BIDDING_ADMIN_KEY"),
+                        help="open the lot through the admin API (default: $BIDDING_ADMIN_KEY)")
+    args = parser.parse_args()
+    base = args.base_url.rstrip("/")
     ws_base = base.replace("http", "ws", 1)
 
     async with httpx.AsyncClient(base_url=base, timeout=10) as http:
@@ -52,10 +69,8 @@ async def main() -> int:
             print(f"      {bidder} bids {amount} over REST -> {r.status_code} "
                   f"{'accepted' if r.status_code == 201 else r.json()['reason']}")
 
-        auction = (await http.post("/auctions", json={
-            "title": "Vintage camera (reconnect demo)", "starting_price": 100,
-            "min_increment": 10, "duration_seconds": 600,
-        })).json()
+        auction = await open_lot(http, args.admin_key, title="Vintage camera (reconnect demo)",
+                                 starting_price=100, min_increment=10, duration_seconds=600)
         aid = auction["id"]
         say("1.", f"Auction #{aid} created: starts at 100, bids must rise by 10.")
 

@@ -1,7 +1,7 @@
 #!/bin/bash
-# EC2 first-boot script for Ubuntu 24.04. Pass it as "User data" when launching
-# the instance: it installs Docker, fetches the app and starts Postgres plus two
-# API instances. No SSH needed. Progress: /var/log/cloud-init-output.log
+# EC2 first-boot script for Ubuntu 24.04, passed as the instance's user data by
+# aws-launch.sh. Installs Docker, fetches the app, installs a per-boot hook and
+# runs deploy/on-boot.sh. No SSH needed. Progress: /var/log/cloud-init-output.log
 set -euxo pipefail
 
 REPO=https://github.com/yashrajkanawade357/Real-Time-Bidding-backend.git
@@ -21,23 +21,16 @@ if ! command -v docker >/dev/null; then
   curl -fsSL https://get.docker.com | sh
 fi
 
-if [ -d "$APP_DIR/.git" ]; then
-  git -C "$APP_DIR" pull --ff-only
-else
+if [ ! -d "$APP_DIR/.git" ]; then
   git clone --depth 1 "$REPO" "$APP_DIR"
 fi
 
-# Every later boot pulls the latest code and rebuilds, so "reboot" = "redeploy"
-# (aws-launch.sh update). The public IP survives a reboot, so the link stays the same.
+# Every later boot runs the same script: pull, rebuild, restart.
 mkdir -p /var/lib/cloud/scripts/per-boot
-cat > /var/lib/cloud/scripts/per-boot/bidding-update.sh <<'SH'
+cat > /var/lib/cloud/scripts/per-boot/bidding.sh <<'SH'
 #!/bin/bash
-set -eux
-cd /opt/bidding
-git pull --ff-only
-docker compose -f docker-compose.yml -f deploy/docker-compose.aws.yml up -d --build --remove-orphans
+exec bash /opt/bidding/deploy/on-boot.sh
 SH
-chmod +x /var/lib/cloud/scripts/per-boot/bidding-update.sh
+chmod +x /var/lib/cloud/scripts/per-boot/bidding.sh
 
-cd "$APP_DIR"
-docker compose -f docker-compose.yml -f deploy/docker-compose.aws.yml up -d --build
+bash "$APP_DIR/deploy/on-boot.sh"

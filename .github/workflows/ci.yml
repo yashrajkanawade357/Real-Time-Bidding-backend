@@ -37,6 +37,9 @@ jobs:
 
       - run: pip install -r requirements-dev.txt
 
+      - name: Known vulnerabilities in dependencies
+        run: pip-audit -r requirements.txt --progress-spinner off
+
       - name: Tests (real Postgres)
         run: pytest -q
 
@@ -50,24 +53,35 @@ jobs:
           python scripts/race_demo.py --bids 300
           python scripts/reconnect_demo.py
 
-  # Boots exactly what an EC2 instance runs (deploy/ec2-user-data.sh minus the
-  # git clone) and checks it from the outside.
+  # Boots exactly what the EC2 instance runs (deploy/on-boot.sh minus git pull):
+  # nginx in front of two API instances, nothing else published, secrets from .env.
   aws-stack:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      COMPOSE: docker compose -f docker-compose.yml -f deploy/docker-compose.aws.yml
+      BIDDING_ADMIN_KEY: ci-admin-key-0123456789abcdefghij
     steps:
       - uses: actions/checkout@v5
 
-      - name: Start Postgres + two API instances with the AWS overrides
-        run: docker compose -f docker-compose.yml -f deploy/docker-compose.aws.yml up -d --build
-
-      - name: Wait until both instances are healthy
+      - name: Secrets the server would generate for itself
         run: |
-          for i in $(seq 1 60); do
-            if curl -sf localhost/health && curl -sf localhost:8001/health; then exit 0; fi
-            sleep 2
-          done
+          printf 'POSTGRES_PASSWORD=%s\nADMIN_KEY=%s\nTRUSTED_PROXY_HOPS=1\n' \
+            "ci-$(openssl rand -hex 12)" "$BIDDING_ADMIN_KEY" > .env
+
+      - name: Start the stack
+        run: $COMPOSE up -d --build
+
+      - name: Wait until it answers through nginx
+        run: |
+          for i in $(seq 1 60); do curl -sf localhost/health && exit 0; sleep 2; done
           exit 1
+
+      - name: nginx spreads requests across both instances
+        run: |
+          seen=$(for i in $(seq 1 12); do curl -s localhost/health | jq -r .instance; done | sort -u | tr '\n' ' ')
+          echo "instances seen: $seen"
+          test "$seen" = "instance-1 instance-2 "
 
       - uses: actions/setup-python@v6
         with:
@@ -75,18 +89,26 @@ jobs:
 
       - run: pip install -r requirements-dev.txt
 
-      - name: Reconnect walkthrough against port 80
+      - name: Reconnect walkthrough through nginx (lot opened via the admin API)
         run: python scripts/reconnect_demo.py --base-url http://localhost
 
-      - name: Database is not reachable from outside
-        run: "! nc -z -w 2 localhost 5432"
-
-      - name: Unsafe demo endpoint is off
+      - name: Only port 80 is published
         run: |
-          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST localhost/auctions/1/bids/unsafe \
-            -H 'content-type: application/json' -d '{"bidder": "ci", "amount": 1}')
-          test "$code" = 404
+          for port in 5432 8000 8001; do
+            if nc -z -w 2 localhost $port; then echo "port $port is open"; exit 1; fi
+          done
+
+      - name: Public endpoints are locked down
+        run: |
+          code() { curl -s -o /dev/null -w '%{http_code}' "$@"; }
+          test "$(code -X POST localhost/auctions/1/bids/unsafe -H 'content-type: application/json' -d '{"bidder":"ci","amount":1}')" = 404
+          test "$(code -X POST localhost/auctions -H 'content-type: application/json' -d '{"title":"x","starting_price":1}')" = 403
+          test "$(code localhost/admin/api/overview -H 'Authorization: Bearer wrong-key-0123456789abcdefgh')" = 401
+          test "$(code localhost/admin/api/overview -H "Authorization: Bearer $BIDDING_ADMIN_KEY")" = 200
+          curl -sI localhost/ | grep -qi "^content-security-policy: default-src 'self'"
+          curl -sI localhost/ | grep -qi "^x-frame-options: DENY"
+          ! curl -sI localhost/ | grep -qi "^server: uvicorn"
 
       - name: Container logs
         if: failure()
-        run: docker compose -f docker-compose.yml -f deploy/docker-compose.aws.yml logs
+        run: $COMPOSE logs

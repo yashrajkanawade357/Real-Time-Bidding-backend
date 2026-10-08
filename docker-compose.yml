@@ -1,11 +1,15 @@
 # Local stack: Postgres + two independent API instances on the same database.
 # Open http://localhost:8000 in one tab and http://localhost:8001 in another -
 # a bid placed through either shows up live on both.
+#
+# Secrets are read from .env when present (the public server generates its own,
+# see deploy/on-boot.sh); the defaults below are for local use only.
 
 x-api: &api
   build: .
   environment:
-    DATABASE_URL: postgresql://postgres:postgres@db:5432/bidding
+    DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/bidding
+    ADMIN_KEY: ${ADMIN_KEY:-}    # admin portal at /admin; off when empty
     ENABLE_UNSAFE_DEMO: "true"   # demo only - see .env.example
     DEMO_RESTOCK: "true"         # keep a few lots open so there's always something to bid on
   depends_on:
@@ -17,7 +21,7 @@ services:
   db:
     image: postgres:17-alpine
     environment:
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: bidding
     ports:
       - "5432:5432"

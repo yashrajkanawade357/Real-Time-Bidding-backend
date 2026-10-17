@@ -8,17 +8,17 @@ every dropped connection, and after a full restart.
 
 **Python 3.13 · FastAPI · WebSockets · PostgreSQL row locks and LISTEN/NOTIFY**
 
-**Live: [d3n4nep4m9xruh.cloudfront.net](https://d3n4nep4m9xruh.cloudfront.net)**. Running on AWS: EC2 behind CloudFront, two API instances behind nginx, deployed by one script.
+**The AWS demo is offline.** It ran on EC2 behind CloudFront, with two API instances behind nginx, deployed by one script; the screenshots and GIF below are from it. Run it locally in one command, or bring it back with `bash deploy/aws-launch.sh launch`.
 
 <img src="docs/img/hero.png" alt="Lot page for an Omega Seamaster 300, signed in as meera. The bid panel says she has been outbid by arjun.m and offers a one-click bid at the next increment. The bid history, read from the database, lists six bids.">
 
 ## Try it in 60 seconds
 
-1. Open **[the live site](https://d3n4nep4m9xruh.cloudfront.net)** and click **Log in**, then **Create account**. Any email works; it is never shown to other bidders.
+1. Put `REQUIRE_LOGIN=true`, `JUDGE_ACCESS=true` and `ADMIN_KEY=` plus 24 or more random characters in `.env` (the AWS demo ran this way), then `docker compose up --build` and open <http://localhost:8000>. Click **Log in**, then **Create account**. Any email works; it is never shown to other bidders.
 2. Go to **Enter the floor**, pick a lot and bid.
 3. Open a **private/incognito window**, create a second account, and open the same lot. Outbid yourself from one window and watch the other change the moment the bid commits.
-4. Back on the landing page, **Run the auction yourself** shows a judge access key. **Open the admin portal** unlocks `/admin` with it: open, close and remove lots, and watch every bid arrive live.
-5. **[API docs](https://d3n4nep4m9xruh.cloudfront.net/docs)** lists every endpoint and lets you call it from the browser.
+4. On the landing page, **Run the auction yourself** shows the judge key. **Open the admin portal** unlocks `/admin` with it: open, close and remove lots, and watch every bid arrive live.
+5. **API docs** at <http://localhost:8000/docs> list every endpoint and let you call it from the browser.
 
 Watching needs no account. Bidding does.
 
@@ -171,7 +171,7 @@ On the public server, visitors can only bid; opening lots is admin-only.
 
 <img src="docs/img/api-docs.png" alt="The interactive API documentation at /docs, grouped into accounts, system and auctions.">
 
-FastAPI generates **[interactive docs at /docs](https://d3n4nep4m9xruh.cloudfront.net/docs)**
+FastAPI generates **interactive docs at `/docs`**
 from the code, so they can't drift from what the server does. Every endpoint
 can be called from the page. The admin API is deliberately left out of them.
 
